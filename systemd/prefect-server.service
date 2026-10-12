@@ -1,0 +1,24 @@
+[Unit]
+Description=Prefect server - Backup Orchestrator
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=backup
+Group=backup
+WorkingDirectory=/opt/backup-orchestrator
+Environment=HOME=/var/lib/backup
+Environment=PATH=/opt/backup-orchestrator/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PREFECT_HOME=/var/lib/backup/.prefect
+ExecStart=/opt/backup-orchestrator/.venv/bin/python -m scripts.run_service server
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=3700
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
