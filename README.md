@@ -6,7 +6,7 @@ Le serveur central héberge API, UI, scheduler et base Prefect. Les satellites e
 
 ```mermaid
 flowchart LR
-    S[Prefect Server : API / UI / Scheduler] --- DB[(SQLite démo / PostgreSQL production)]
+    S[Prefect Server : API / UI / Scheduler] --- DB[(SQLite locale)]
     E1[emea-sat01] -->|poll HTTP API| S
     E2[emea-sat02] -->|poll HTTP API| S
     A1[apac-sat01] -->|poll HTTP API| S
@@ -36,7 +36,7 @@ Le parser et le POST proposent une enveloppe JSON versionnée. Son format, l'aut
 
 ## Installation rapide
 
-Prérequis : Linux avec systemd, Python 3.12, Git, accès aux dépôts de paquets et au dépôt Bitbucket, connectivité régionale. Installation de référence : Ubuntu 24.04, utilisateur `backup`, chemin `/opt/backup-orchestrator` identique partout.
+Prérequis : Linux avec systemd, Python 3.12, Git, accès aux dépôts de paquets et au dépôt Bitbucket, connectivité régionale. Installation de référence : Ubuntu 24.04, utilisateur `backup`, dossiers distincts `/data/backup-orchestrator/server` et `/data/backup-orchestrator/worker`.
 
 Serveur : suivre [installation-server.md](docs/installation-server.md). Satellites : suivre [installation-worker.md](docs/installation-worker.md).
 
@@ -44,14 +44,14 @@ Serveur : suivre [installation-server.md](docs/installation-server.md). Satellit
 # Dans le clone sur le serveur
 bash scripts/install_server.sh
 # Éditer .env avant registration et lancement
-.venv/bin/python -m server.register
+venv/bin/python -m server.register
 ```
 
 ```bash
 # Dans le clone sur chaque satellite
 bash scripts/install_worker.sh
 # Éditer .env et raccorder le module interne avant collecte réelle
-.venv/bin/python -m scripts.run_service worker
+venv/bin/python -m scripts.run_service worker
 ```
 
 ## Exécution manuelle et planification
@@ -79,9 +79,9 @@ Ajouter un module `workers/collectors/datadomain.py`, un parser si nécessaire e
 ## Tests
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-PREFECT_HOME=/tmp/backup-prefect-tests .venv/bin/python -m pytest -q
+python3.12 -m venv venv
+venv/bin/pip install -r requirements-dev.txt
+PREFECT_HOME="$PWD/.runtime/prefect" venv/bin/python -m pytest -q
 ```
 
 Les données de tests sont des fixtures synthétiques. Les dépendances directes sont figées ; établir un verrou complet dans votre environnement Linux avant diffusion d'une version validée.
@@ -89,3 +89,15 @@ Les données de tests sont des fixtures synthétiques. Les dépendances directes
 ## Références Prefect
 
 API et commandes contrôlées avec Prefect 3.8.8 et les sources officielles : [code local](https://docs.prefect.io/v3/how-to-guides/deployments/store-flow-code), [serveur](https://docs.prefect.io/v3/how-to-guides/self-hosted/server-cli), [SDK deployments](https://reference.prefect.io/prefect/deployments/runner/).
+
+## Un seul dossier applicatif
+
+Tout reste sous le clone, par exemple `/data/backup-orchestrator/server` pour le serveur et `/data/backup-orchestrator/worker` pour le worker : `.env`, `venv`, code et `.runtime/` (base SQLite, fichiers Prefect, profils, stockage, home technique, caches, temporaires et logs). Ces chemins sont calculés depuis le code et ne dépendent pas du répertoire courant. `.runtime/` est exclu de Git.
+
+Pour utiliser `/data/autre-dossier`, cloner à cet emplacement et renseigner `WORKER_CODE_PATH` dans le `.env` serveur avec le chemin des clones satellites. `scripts/install_service.sh server|worker` génère le service dans `.runtime/systemd/` avec le chemin réel. L'exemple statique `prefect.yaml` doit aussi être adapté si vous l'utilisez à la place de la registration.
+
+Les unités restent dans le dossier applicatif ; systemd crée uniquement les liens nécessaires dans `/etc/systemd/system`. Les logs applicatifs sont dans `.runtime/logs/prefect-server.log` et `.runtime/logs/prefect-worker.log` ; journald conserve les événements système du service. Python, Git et systemd restent des prérequis système.
+
+Pour tester serveur et worker sur la même machine, suivre [development-local.md](docs/development-local.md). La télémétrie est désactivée dans les modèles `.env`.
+
+Serveur et worker ont chacun un clone séparé du même dépôt, leur propre `.env`, `venv/` et `.runtime/`. Cela reste vrai sur une seule machine DEV. La base est uniquement dans le dossier serveur ; les workers n'hébergent pas de base Prefect. Ne pas partager un fichier `.env` ou un virtualenv entre les deux rôles.

@@ -11,6 +11,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def load_environment(path: str | Path | None = None) -> None:
     load_dotenv(path or ROOT / ".env", override=False)
+    runtime_environment()
+
+
+def runtime_environment() -> None:
+    """Tous les fichiers applicatifs sont ancrés dans le clone, quel que soit cwd."""
+    runtime = ROOT / ".runtime"
+    directories = {
+        "HOME": runtime / "home",
+        "PREFECT_HOME": runtime / "prefect",
+        "PREFECT_PROFILES_PATH": runtime / "prefect" / "profiles.toml",
+        "PREFECT_LOCAL_STORAGE_PATH": runtime / "prefect" / "storage",
+        "PREFECT_RESULTS_LOCAL_STORAGE_PATH": runtime / "prefect" / "storage",
+        "TMPDIR": runtime / "tmp",
+        "XDG_CACHE_HOME": runtime / "cache",
+        "PIP_CACHE_DIR": runtime / "cache" / "pip",
+    }
+    for name, directory in directories.items():
+        (directory.parent if name == "PREFECT_PROFILES_PATH" else directory).mkdir(parents=True, exist_ok=True)
+        os.environ[name] = str(directory)
+    (runtime / "logs").mkdir(parents=True, exist_ok=True)
+    # tempfile peut avoir été importé avant le chargement du .env.
+    import tempfile
+    tempfile.tempdir = str(runtime / "tmp")
 
 
 def required(name: str) -> str:
@@ -82,5 +105,16 @@ def server_environment(path: str | Path | None = None) -> None:
     os.environ["PREFECT_SERVER_API_HOST"] = required("PREFECT_API_HOST")
     os.environ["PREFECT_SERVER_API_PORT"] = str(positive_int("PREFECT_API_PORT", 4200))
     database = os.environ.get("PREFECT_DB_URL", "").strip()
-    if database:
-        os.environ["PREFECT_SERVER_DATABASE_CONNECTION_URL"] = database
+    if not database:
+        database = "sqlite+aiosqlite:///" + str(ROOT / ".runtime" / "prefect" / "prefect.db")
+    prefix = "sqlite+aiosqlite:///"
+    if not database.startswith(prefix):
+        raise ValueError("PREFECT_DB_URL doit désigner une base SQLite locale au projet")
+    database_path = Path(database[len(prefix):])
+    if not database_path.is_absolute():
+        database_path = ROOT / database_path
+    database_path = database_path.resolve()
+    if not database_path.is_relative_to(ROOT.resolve()):
+        raise ValueError("La base doit rester dans le dossier du projet")
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    os.environ["PREFECT_SERVER_DATABASE_CONNECTION_URL"] = prefix + str(database_path)

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export TMPDIR="$PWD/.runtime/tmp"
+export PIP_CACHE_DIR="$PWD/.runtime/cache/pip"
 if [[ $# != 1 ]]; then
   printf '%s\n' 'Usage: scripts/update_worker.sh <tag-ou-commit-validé>' >&2
   exit 1
@@ -16,8 +18,8 @@ sudo systemctl stop prefect-worker
 # Le service reste arrêté en cas d’échec : corriger avant de le redémarrer.
 git fetch --tags origin
 git checkout --detach "$1"
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install --no-deps -e .
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python -m pip install --no-deps -e .
 sudo systemctl start prefect-worker
 sudo systemctl --no-pager status prefect-worker
 printf '%s\n' 'Vérifier la UI puis réactiver le pool.'

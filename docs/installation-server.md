@@ -1,15 +1,16 @@
 # Installation serveur
 
-Référence : Ubuntu 24.04 LTS, un processus serveur Prefect et six workers distants. Les commandes d'installation système utilisent sudo ; les commandes Python s'exécutent avec l'utilisateur dédié. Remplacer l'URL Bitbucket par votre dépôt ; préparer une clé SSH de lecture pour `backup`.
+Référence : Ubuntu 24.04 LTS, un processus serveur Prefect et six workers distants. Les commandes d'installation système utilisent sudo ; les commandes Python s'exécutent avec l'utilisateur dédié. Remplacer l'URL Bitbucket par votre dépôt ; préparer une clé SSH de lecture pour le compte exécutant le clone.
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3.12 python3.12-venv git curl
-sudo useradd --system --create-home --home-dir /var/lib/backup --shell /bin/bash backup
-sudo install -d -o backup -g backup /opt/backup-orchestrator
-sudo -u backup git clone git@bitbucket.org:VOTRE_ESPACE/backup-orchestrator.git /opt/backup-orchestrator
-sudo -u backup bash /opt/backup-orchestrator/scripts/install_server.sh
-sudo -u backup nano /opt/backup-orchestrator/.env
+sudo useradd --system --no-create-home --home-dir /data/backup-orchestrator/server/.runtime/home --shell /bin/bash backup
+sudo install -d -o backup -g backup /data/backup-orchestrator/server
+sudo git clone git@bitbucket.org:VOTRE_ESPACE/backup-orchestrator.git /data/backup-orchestrator/server
+sudo chown -R backup:backup /data/backup-orchestrator/server
+sudo -u backup bash /data/backup-orchestrator/server/scripts/install_server.sh
+sudo -u backup nano /data/backup-orchestrator/server/.env
 ```
 
 Le `.env` n'est pas un script shell ; ne pas le sourcer. Le lanceur Python le charge et mappe :
@@ -23,42 +24,29 @@ Le `.env` n'est pas un script shell ; ne pas le sourcer. Le lanceur Python le ch
 
 `PREFECT_SERVER_URL` doit être joignable par les utilisateurs UI et les workers. Le port d'écoute est indépendant de l'URL publique. Protéger l'accès API par le réseau d'entreprise et HTTPS selon l'infrastructure existante ; ne pas exposer ce service sans contrôle d'accès à Internet.
 
-## Base de données
+## Données et base locale
 
-Démo SQLite : laisser `PREFECT_DB_URL` vide. Prefect crée et migre la base au démarrage dans `/var/lib/backup/.prefect/prefect.db`.
+Laisser `PREFECT_DB_URL` vide : le lanceur fixe explicitement la base SQLite à `/data/backup-orchestrator/server/.runtime/prefect/prefect.db`. Aucun fichier n'est créé dans `~/.prefect` ou `/var/lib`. Si un chemin SQLite est configuré, il doit rester dans le clone ; une base extérieure est refusée. Le serveur garde un seul processus API, avec six workers distants.
 
-Production avec six workers : utiliser PostgreSQL, tout en gardant **un seul processus API**. Six satellites n'impliquent pas `prefect server start --workers 6`. Le mode serveur multi-processus exige d'autres composants et sort des contraintes du projet.
-
-Installation locale PostgreSQL (ou utiliser une base gérée par votre DBA) :
+Les migrations sont appliquées automatiquement au démarrage. Migration explicite avant démarrage :
 
 ```bash
-sudo apt-get install -y postgresql
-sudo -u postgres createuser --pwprompt prefect
-sudo -u postgres createdb --owner=prefect prefect
-sudo -u backup nano /opt/backup-orchestrator/.env
+cd /data/backup-orchestrator/server
+sudo -u backup venv/bin/python -c 'from workers.common.config import server_environment; import subprocess; server_environment(); subprocess.run(["venv/bin/prefect", "server", "database", "upgrade", "-y"], check=True)'
 ```
 
-Renseigner `PREFECT_DB_URL=postgresql+asyncpg://prefect:MOT_DE_PASSE_ENCODÉ@127.0.0.1:5432/prefect`. Encoder les caractères spéciaux du mot de passe pour une URL. Conserver la valeur exclusivement dans `.env`, mode 600. Prefect inclut le driver asyncpg.
-
-Migration explicite, avant démarrage (le lancement normal migre aussi automatiquement) :
-
-```bash
-sudo -u backup /opt/backup-orchestrator/.venv/bin/python -c 'from workers.common.config import server_environment; import subprocess; server_environment("/opt/backup-orchestrator/.env"); subprocess.run(["/opt/backup-orchestrator/.venv/bin/prefect", "server", "database", "upgrade", "-y"], check=True)'
-```
-
-Ne jamais utiliser `database reset` en production. Prévoir la sauvegarde PostgreSQL et de la configuration via les procédures existantes.
+Ne jamais utiliser `database reset` en production. Pour sauvegarder SQLite, arrêter le serveur avant de copier la base, ou employer l'API de sauvegarde SQLite. Sauvegarder également `.env` et le dossier `.runtime`. Cette configuration privilégie le stockage entièrement local demandé ; si la charge dépasse les capacités SQLite, une migration PostgreSQL et son stockage devront faire l'objet d'une configuration distincte.
 
 ## Service et registration
 
 ```bash
-sudo cp /opt/backup-orchestrator/systemd/prefect-server.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now prefect-server
+cd /data/backup-orchestrator/server
+sudo -u backup bash scripts/install_service.sh server
 sudo systemctl --no-pager status prefect-server
 curl --fail http://prefect-server:4200/api/health
 sudo journalctl -u prefect-server -n 100 --no-pager
-cd /opt/backup-orchestrator
-sudo -u backup .venv/bin/python -m server.register
+cd /data/backup-orchestrator/server
+sudo -u backup venv/bin/python -m server.register
 ```
 
 Accéder à `http://prefect-server:4200` dans le navigateur. La registration crée les six pools `process` puis applique les 24 deployments. Elle charge le flow pour son schéma, sans exécuter la collecte et sans nécessiter les secrets NetBackup sur le serveur.
@@ -70,3 +58,11 @@ sudo journalctl -u prefect-server -f
 ```
 
 La documentation des [commandes serveur officielles](https://docs.prefect.io/v3/how-to-guides/self-hosted/server-cli) décrit SQLite, PostgreSQL et les migrations.
+
+Les logs applicatifs sont accessibles localement :
+
+```bash
+tail -n 100 /data/backup-orchestrator/server/.runtime/logs/prefect-server.log
+```
+
+`journalctl -u` reste utile pour les erreurs de démarrage systemd. Pour un autre dossier, remplacer `/data/backup-orchestrator/server` dans les commandes ; le script d'installation du service génère automatiquement les chemins de l'unité.

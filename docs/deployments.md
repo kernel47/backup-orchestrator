@@ -3,8 +3,8 @@
 La registration lit le `.env` serveur puis génère une configuration YAML native Prefect, crée les pools absents et appelle `prefect deploy --all --prefect-file ... --no-prompt`. Les noms stables `netbackup/<satellite>-<asset>` permettent la mise à jour sans duplication. Elle refuse un pool existant de type différent. Les pools existants conservent leurs réglages. Les deployments supprimés de la liste doivent être supprimés explicitement dans la UI.
 
 ```bash
-cd /opt/backup-orchestrator
-sudo -u backup .venv/bin/python -m server.register
+cd /data/backup-orchestrator/server
+sudo -u backup venv/bin/python -m server.register
 ```
 
 Les horaires configurables dans `.env` : jobs `0 * * * *`, policies `0 2 * * *`, images `0 3 * * *`, slp `0 4 * * *`, timezone UTC par défaut. `DEPLOYMENT_CONCURRENCY=1` limite chaque deployment ; `--limit 1` limite l'ensemble des runs par worker. La stratégie native par défaut met en attente les runs excédentaires.
@@ -13,7 +13,7 @@ Chaque satellite possède quatre exemples, soit 24 deployments. **Ils sont tous 
 
 ## Code préinstallé
 
-Le `pull` utilise uniquement `prefect.deployments.steps.set_working_directory`, avec `WORKER_CODE_PATH=/opt/backup-orchestrator`. Il change le répertoire du subprocess sur le satellite ; il ne télécharge pas Git. L'entrypoint est `workers/flows/netbackup.py:netbackup_flow`. La job variable `working_dir` est le même chemin. Ce dossier et `.venv` doivent être installés et lisibles par `backup` sur tous les satellites. Le code central sert à inspecter le schéma, pas à collecter. Le package est installé en editable pour rendre les imports disponibles depuis les subprocess.
+Le `pull` utilise uniquement `prefect.deployments.steps.set_working_directory`, avec `WORKER_CODE_PATH=/data/backup-orchestrator/worker`. Il change le répertoire du subprocess sur le satellite ; il ne télécharge pas Git. L'entrypoint est `workers/flows/netbackup.py:netbackup_flow`. La job variable `working_dir` est le même chemin. Ce dossier et `venv` doivent être installés et lisibles par `backup` sur tous les satellites. Le code central sert à inspecter le schéma, pas à collecter. Le package est installé en editable pour rendre les imports disponibles depuis les subprocess.
 
 `prefect.yaml` est un exemple unitaire au chemin par défaut. La registration complète est la source de référence. Ne pas utiliser simultanément cet exemple et une configuration centrale différente pour le même deployment.
 
@@ -24,7 +24,7 @@ Les dates sont des chaînes ISO 8601 avec fuseau, normalisées en UTC ; une date
 ```bash
 # Exécuter avec PREFECT_API_URL configuré dans l'environnement de la CLI.
 export PREFECT_API_URL=http://prefect-server:4200/api
-/opt/backup-orchestrator/.venv/bin/prefect deployment run netbackup/emea-sat01-jobs --params '{"asset":"jobs","start_date":"2026-10-11T00:00:00Z","end_date":"2026-10-12T00:00:00Z"}'
+/data/backup-orchestrator/server/venv/bin/prefect deployment run netbackup/emea-sat01-jobs --params '{"asset":"jobs","start_date":"2026-10-11T00:00:00Z","end_date":"2026-10-12T00:00:00Z"}'
 ```
 
 Depuis UI, le même formulaire permet une période, une borne unique ou une relance avec les mêmes paramètres. Policies/clients/slp collectent sans dates. Pour image_contents, changer asset et fournir image_id dans le formulaire ou dans `--params`.
@@ -36,3 +36,5 @@ Une tentative peut reprendre depuis le début après avoir transmis plusieurs lo
 Les états/logs/durées sont visibles dans UI ; les statistiques sont un petit retour de flow non persisté comme résultat de données. Les logs finaux contiennent région, satellite, master, asset et compteurs. Aucun jeu de données ni secret n'est retourné.
 
 Référence : [stockage local officiel](https://docs.prefect.io/v3/how-to-guides/deployments/store-flow-code).
+
+Le chemin `WORKER_CODE_PATH` désigne le clone worker, jamais le dossier serveur. Chaque rôle possède son `.env`, son `venv` et son `.runtime` indépendants.

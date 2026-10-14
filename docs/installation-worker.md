@@ -1,18 +1,19 @@
 # Installation satellite
 
-Référence Ubuntu 24.04, utilisateur `backup`, Python 3.12, clone identique dans `/opt/backup-orchestrator`. Préparer l'accès SSH Bitbucket du compte `backup`.
+Référence Ubuntu 24.04, utilisateur `backup`, Python 3.12, clone identique dans `/data/backup-orchestrator/worker` (ou un autre dossier sous `/data`). Préparer l’accès SSH Bitbucket du compte exécutant le clone. Pour les mises à jour, placer la clé du compte `backup` dans `.runtime/home/.ssh`, avec les permissions SSH habituelles.
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3.12 python3.12-venv git curl
-sudo useradd --system --create-home --home-dir /var/lib/backup --shell /bin/bash backup
-sudo install -d -o backup -g backup /opt/backup-orchestrator
-sudo -u backup git clone git@bitbucket.org:VOTRE_ESPACE/backup-orchestrator.git /opt/backup-orchestrator
-sudo -u backup bash /opt/backup-orchestrator/scripts/install_worker.sh
+sudo useradd --system --no-create-home --home-dir /data/backup-orchestrator/worker/.runtime/home --shell /bin/bash backup
+sudo install -d -o backup -g backup /data/backup-orchestrator/worker
+sudo git clone git@bitbucket.org:VOTRE_ESPACE/backup-orchestrator.git /data/backup-orchestrator/worker
+sudo chown -R backup:backup /data/backup-orchestrator/worker
+sudo -u backup bash /data/backup-orchestrator/worker/scripts/install_worker.sh
 # Remplacer par le véritable artefact interne, fourni par votre équipe.
-sudo -u backup /opt/backup-orchestrator/.venv/bin/pip install /CHEMIN/INTERNE/netbackup_py-VERSION-py3-none-any.whl
-sudo -u backup nano /opt/backup-orchestrator/.env
-sudo chmod 600 /opt/backup-orchestrator/.env
+sudo -u backup /data/backup-orchestrator/worker/venv/bin/pip install /CHEMIN/INTERNE/netbackup_py-VERSION-py3-none-any.whl
+sudo -u backup nano /data/backup-orchestrator/worker/.env
+sudo chmod 600 /data/backup-orchestrator/worker/.env
 ```
 
 L'installation du wheel ne raccorde pas à elle seule l'adaptateur : suivre [integrations.md](integrations.md) et vérifier ses imports/méthodes réels. Tous les satellites doivent utiliser la même version validée du projet et du module interne.
@@ -44,9 +45,8 @@ curl --connect-timeout 10 --max-time 30 --head https://BACKUP_HUB_HOST/
 Créer les pools depuis le serveur avant de démarrer les satellites.
 
 ```bash
-sudo cp /opt/backup-orchestrator/systemd/prefect-worker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now prefect-worker
+cd /data/backup-orchestrator/worker
+sudo -u backup bash scripts/install_service.sh worker
 sudo systemctl --no-pager status prefect-worker
 sudo journalctl -u prefect-worker -n 100 --no-pager
 ```
@@ -66,8 +66,16 @@ sudo journalctl -u prefect-worker -f
 Mettre le pool en pause dans la UI pour empêcher de nouveaux départs ; attendre que ses runs Running soient terminés, y compris ceux préchargés. Le scheduler peut continuer à créer des runs Scheduled. Ne pas modifier le code pendant une collecte. Ensuite :
 
 ```bash
-cd /opt/backup-orchestrator
+cd /data/backup-orchestrator/worker
 sudo -u backup bash scripts/update_worker.sh TAG_OU_COMMIT_VALIDÉ
 ```
 
 Le compte `backup` doit pouvoir appeler sudo pour stop/start/status du service ; sinon effectuer les étapes avec un administrateur : arrêter le service, `git fetch --tags origin`, `git checkout --detach TAG_VALIDÉ`, réinstaller les requirements et le package, redémarrer, vérifier. Si l'installation échoue, laisser le worker arrêté, corriger ou revenir au tag précédent. Réactiver le pool après vérification. Ne pas copier un `.env` d'un autre satellite.
+
+Les logs applicatifs sont accessibles localement :
+
+```bash
+tail -n 100 /data/backup-orchestrator/worker/.runtime/logs/prefect-worker.log
+```
+
+`journalctl -u` reste utile pour les erreurs de démarrage systemd. Pour un autre dossier, remplacer `/data/backup-orchestrator/worker` dans les commandes ; le script d'installation du service génère automatiquement les chemins de l'unité.

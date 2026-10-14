@@ -1,5 +1,9 @@
 from time import monotonic
 
+from workers.common.config import load_environment
+
+load_environment()
+
 from prefect import flow, get_run_logger, task
 from prefect.cache_policies import NO_CACHE
 

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install --no-deps -e .
+mkdir -p .runtime/{home,prefect,tmp,cache/pip,logs}
+export HOME="$PWD/.runtime/home"
+export TMPDIR="$PWD/.runtime/tmp"
+export PIP_CACHE_DIR="$PWD/.runtime/cache/pip"
+python3.12 -m venv venv
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python -m pip install --no-deps -e .
 if [[ ! -f .env ]]; then
   cp config/server.env.example .env
 fi

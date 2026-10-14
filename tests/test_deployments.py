@@ -4,7 +4,7 @@ from prefect.workers.process import ProcessWorker
 
 
 def test_deployments(monkeypatch):
-    values = {"WORKER_CODE_PATH": "/opt/backup-orchestrator", "SCHEDULE_TIMEZONE": "UTC",
+    values = {"WORKER_CODE_PATH": "/data/backup-orchestrator", "SCHEDULE_TIMEZONE": "UTC",
               "JOBS_CRON": "0 * * * *", "POLICIES_CRON": "0 2 * * *",
               "IMAGES_CRON": "0 3 * * *", "SLP_CRON": "0 4 * * *"}
     for key, value in values.items(): monkeypatch.setenv(key, value)

@@ -7,11 +7,14 @@ After=network-online.target
 Type=simple
 User=backup
 Group=backup
-WorkingDirectory=/opt/backup-orchestrator
-Environment=HOME=/var/lib/backup
-Environment=PATH=/opt/backup-orchestrator/.venv/bin:/usr/local/bin:/usr/bin:/bin
-Environment=PREFECT_HOME=/var/lib/backup/.prefect
-ExecStart=/opt/backup-orchestrator/.venv/bin/python -m scripts.run_service worker
+WorkingDirectory=/data/backup-orchestrator/worker
+Environment=HOME=/data/backup-orchestrator/worker/.runtime/home
+Environment=PATH=/data/backup-orchestrator/worker/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PREFECT_HOME=/data/backup-orchestrator/worker/.runtime/prefect
+Environment=TMPDIR=/data/backup-orchestrator/worker/.runtime/tmp
+ExecStart=/data/backup-orchestrator/worker/venv/bin/python -m scripts.run_service worker
+StandardOutput=append:/data/backup-orchestrator/worker/.runtime/logs/prefect-worker.log
+StandardError=inherit
 Restart=on-failure
 RestartSec=10
 KillSignal=SIGTERM

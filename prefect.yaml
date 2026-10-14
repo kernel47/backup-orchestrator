@@ -4,7 +4,7 @@ build: null
 push: null
 pull:
   - prefect.deployments.steps.set_working_directory:
-      directory: /opt/backup-orchestrator
+      directory: /data/backup-orchestrator/worker
 deployments:
   - name: emea-sat01-jobs
     entrypoint: workers/flows/netbackup.py:netbackup_flow
@@ -20,4 +20,4 @@ deployments:
     work_pool:
       name: backup-emea-01
       job_variables:
-        working_dir: /opt/backup-orchestrator
+        working_dir: /data/backup-orchestrator/worker

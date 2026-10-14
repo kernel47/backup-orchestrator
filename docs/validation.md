@@ -17,3 +17,7 @@ Vérifications réalisées :
 L'installation initiale a sélectionné SQLAlchemy 2.1.4, avec lequel le scheduler a échoué sur une insertion ORM. `requirements.txt` fixe SQLAlchemy 2.0.54 ; le scheduler a ensuite produit ses runs sans cette erreur. Conserver cette version avec la version Prefect validée, puis revalider lors d'une mise à jour.
 
 Les identifiants employés dans le test worker étaient synthétiques ; aucun appel NetBackup ni livraison à Backup Hub n'a eu lieu. La recette d'intégration réelle reste conditionnée au raccordement du client privé et à la confirmation du contrat Hub.
+
+## Adaptation au dossier unique — 13 octobre 2026
+
+35 tests réussis après l'adaptation : chemins d'exécution sous le clone, base SQLite locale par défaut et refus des bases extérieures. Les scripts Bash ont passé la vérification de syntaxe. Les services restent générés dans `.runtime/systemd` ; seul leur lien d'enregistrement est géré par systemd.

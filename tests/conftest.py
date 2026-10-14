@@ -12,3 +12,20 @@ def configured(monkeypatch, tmp_path):
     for name, value in values.items():
         monkeypatch.setenv(name, value)
     return values
+
+
+@pytest.fixture(autouse=True)
+def local_runtime(monkeypatch, tmp_path):
+    import os
+    import tempfile
+    import workers.common.config as config
+    monkeypatch.setattr(config, "ROOT", tmp_path / "project")
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    for name in ("HOME", "PREFECT_HOME", "PREFECT_PROFILES_PATH", "PREFECT_LOCAL_STORAGE_PATH",
+                 "PREFECT_RESULTS_LOCAL_STORAGE_PATH", "TMPDIR", "XDG_CACHE_HOME", "PIP_CACHE_DIR", "PREFECT_API_URL",
+                 "PREFECT_SERVER_UI_API_URL", "PREFECT_SERVER_API_HOST", "PREFECT_SERVER_API_PORT",
+                 "PREFECT_SERVER_DATABASE_CONNECTION_URL", "PREFECT_LOGGING_LEVEL"):
+        if name in os.environ:
+            monkeypatch.setenv(name, os.environ[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
