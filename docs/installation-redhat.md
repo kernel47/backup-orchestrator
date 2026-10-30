@@ -55,16 +55,16 @@ PYTHON=python3.12 ./scripts/install_master.sh
 
 Use `PYTHON=python3.11` if that is your installed supported interpreter. Installation creates `.venv`, installs dependencies and initializes an empty database. It creates `.env` from `.env.master.example` with random dashboard/API/session secrets when the file does not exist. Existing credentials and data are preserved.
 
-Edit `/data/tasker/.env` and replace `MASTER_PRIVATE_IP` with the address to bind:
+Keep the master local to its Red Hat host on port 8000. Check `/data/tasker/.env`:
 
 ```dotenv
-MASTER_HOST=MASTER_PRIVATE_IP
+MASTER_HOST=127.0.0.1
 MASTER_PORT=8000
 DATABASE_URL=sqlite:///var/orchestrator.db
 SCHEDULER_ENABLED=true
 ```
 
-If a reverse proxy runs on the master, keep `MASTER_HOST=127.0.0.1` and expose only the proxy. Keep the generated `AUTH_PASSWORD`, `ADMIN_TOKEN` and `SESSION_SECRET` private. `AUTH_USERNAME` defaults to `admin`. `MASTER_URL` in the master environment is used by the inventory synchronization CLI: set it to a reachable master URL when needed.
+The master binds only to localhost, like a local application backend. Use a reverse proxy on the same machine for remote dashboard and worker access; keep the backend on `127.0.0.1:8000`. Keep the generated `AUTH_PASSWORD`, `ADMIN_TOKEN` and `SESSION_SECRET` private. `AUTH_USERNAME` defaults to `admin`. `MASTER_URL` in the master environment is used by the inventory synchronization CLI: set it to a reachable master URL when needed.
 
 Start in the foreground for the first check:
 
@@ -72,7 +72,7 @@ Start in the foreground for the first check:
 ./scripts/start_master.sh
 ```
 
-Open `http://MASTER_PRIVATE_IP:8000` for the controlled pilot, or your configured HTTPS URL. Sign in with `AUTH_USERNAME` / `AUTH_PASSWORD` from `.env`. `/health` must report healthy. Ctrl+C stops the foreground process.
+Open `http://127.0.0.1:8000` on the Red Hat host, or your configured HTTPS proxy URL. From a remote workstation without a proxy, an SSH tunnel such as `ssh -L 18000:127.0.0.1:8000 USER@MASTER` makes the dashboard available at `http://127.0.0.1:18000` on that workstation. A tunnel used for your browser does not automatically provide remote workers with access. Sign in with `AUTH_USERNAME` / `AUTH_PASSWORD` from `.env`. `/health` must report healthy. Ctrl+C stops the foreground process.
 
 Run one master process against the SQLite database. Do not run multiple uvicorn workers or multiple scheduler instances against it.
 
@@ -106,7 +106,7 @@ LEASE_SECONDS=30
 WORKER_TIMEZONE=Europe/Paris
 ```
 
-Replace the example master URL with yours. For the isolated HTTP pilot, use `http://MASTER_PRIVATE_IP:8000`. The concurrency should match the provisioned capacity. Use the satellite's actual IANA timezone, for example `Europe/Paris`, `Asia/Singapore` or `America/New_York`; a broad zone such as EMEA is not a timezone.
+Replace the example master URL with yours. A worker on the same machine can use `http://127.0.0.1:8000`. Remote workers need a reachable master endpoint, normally the HTTPS reverse proxy; they cannot connect to the master machine's loopback listener directly. The concurrency should match the provisioned capacity. Use the satellite's actual IANA timezone, for example `Europe/Paris`, `Asia/Singapore` or `America/New_York`; a broad zone such as EMEA is not a timezone.
 
 ```bash
 chmod 600 .env.worker
@@ -189,66 +189,53 @@ In **Schedules**, bind the collector to the relevant group. Start with schedules
 
 A valid business failure report is preserved even when the command exits nonzero. A reported success with nonzero exit code is a technical failure. Invalid JSON is not treated as success. Timeout kills the collector process group; it does not prove that no data was delivered.
 
-## 7. Run persistently with systemd
+## 7. Install the persistent systemd service
 
-The supplied shell launchers run in the foreground. For unattended use, an administrator can create the following units. These are deployment examples to validate on your Red Hat host; adapt the service account, paths and network settings. Run either the foreground process or the service, never both for the same master or worker ID.
+`start_master.sh` and `start_worker.sh` are foreground launchers. To keep the master running after closing the terminal and start it at boot, use the service installer on Red Hat. The application must first be installed and `.env` configured. Stop any foreground master first to free port 8000.
 
-Application files and the database remain under `/data/tasker`. Only optional service registration files live in `/etc/systemd/system`; systemd captures service output in its normal journal. For a foreground pilot, no systemd unit installation is required.
-
-Master: `/etc/systemd/system/tasker-master.service`
-
-```ini
-[Unit]
-Description=Tasker master
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=simple
-User=tasker
-Group=tasker
-WorkingDirectory=/data/tasker
-ExecStart=/data/tasker/scripts/start_master.sh
-Restart=on-failure
-RestartSec=5
-UMask=0077
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Worker: `/etc/systemd/system/tasker-worker.service`
-
-```ini
-[Unit]
-Description=Tasker satellite worker
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=simple
-User=tasker
-Group=tasker
-WorkingDirectory=/data/tasker
-ExecStart=/data/tasker/scripts/start_worker.sh
-Restart=on-failure
-RestartSec=5
-UMask=0077
-
-[Install]
-WantedBy=multi-user.target
-```
-
-After placing the corresponding unit on each machine, run as an administrator (choose `master` or `worker`):
+The service account must exist and have access to `/data/tasker`, including write access to `var/`. For a new deployment, an administrator can provision it before installing Tasker:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now tasker-master
+sudo useradd --system --no-create-home --home-dir /data/tasker --shell /sbin/nologin tasker
+sudo chown -R tasker:tasker /data/tasker
+```
+
+Skip account creation if it already exists. Application/dependency installation should run as that account, while the following service-registration command uses sudo:
+
+```bash
+cd /data/tasker
+sudo ./scripts/install_service.sh master --user tasker --start
 sudo systemctl status tasker-master
+curl --fail http://127.0.0.1:8000/health
+```
+
+The installer derives paths from the checkout, writes `/etc/systemd/system/tasker-master.service`, reloads systemd, and with `--start` enables and starts the service. It runs the master as `tasker`, not root, with `/data/tasker` as its working directory. The master reads `/data/tasker/.env`; its bind address remains `MASTER_HOST=127.0.0.1` and port `MASTER_PORT=8000`.
+
+For a satellite after installing the worker and configuring `.env.worker`:
+
+```bash
+cd /data/tasker
+sudo ./scripts/install_service.sh worker --user tasker --start
+sudo systemctl status tasker-worker
+```
+
+Inspect the generated unit without making changes (also works on the development Mac):
+
+```bash
+./scripts/install_service.sh master --user tasker --print
+```
+
+Operating commands:
+
+```bash
+sudo systemctl restart tasker-master
+sudo systemctl stop tasker-master
 sudo journalctl -u tasker-master -n 100 --no-pager
 ```
 
-Use `tasker-worker` instead on a satellite. Both unit examples deliberately leave site-specific reverse proxy, certificate, firewall and backup-collector environment provisioning to the host deployment configuration.
+Use `tasker-worker` on satellites. Do not run a second foreground process while its service is running. An already-running service needs `systemctl restart` after code/config changes; `enable --now` does not restart an active process. If startup fails, check the journal for a port conflict, missing environment, filesystem permissions, or an environment copied from another machine.
+
+The code, configuration, Python environment and SQLite database remain under `/data/tasker`. The systemd registration lives in `/etc/systemd/system`, and service output goes to the system journal. Actual installation/startup on Red Hat still requires validation there; the development Mac cannot run systemd.
 
 ## Backups and updates
 

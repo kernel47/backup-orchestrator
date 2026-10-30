@@ -13,7 +13,7 @@ PYTHON=python3.12 ./scripts/install_master.sh
 
 Installation creates a venv and random secrets if `.env` does not exist. Existing `.env` and database contents are preserved. See `.env.master.example`: DATABASE_URL, MASTER_HOST, MASTER_PORT, AUTH_USERNAME, AUTH_PASSWORD, ADMIN_TOKEN, SESSION_SECRET and scheduler/lease settings. A fresh master has no demo hosts or collectors.
 
-The launcher runs one uvicorn process in the foreground; stop with Ctrl+C or an OS service manager. Do not use multiple uvicorn workers or multiple masters on the same SQLite database.
+The launcher runs one uvicorn process in the foreground on `127.0.0.1:8000` by default. For a persistent Red Hat service, after installation/configuration run `sudo ./scripts/install_service.sh master --user tasker --start`. The account must exist and have access to the project. Stop any foreground master first. Use `systemctl status tasker-master` and `journalctl -u tasker-master` for diagnostics. Do not use multiple uvicorn workers or multiple masters on the same SQLite database.
 
 ## Satellite
 

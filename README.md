@@ -13,6 +13,8 @@ PYTHON=python3.12 ./scripts/install_master.sh
 ./scripts/start_master.sh
 ```
 
+The master listens on `127.0.0.1:8000` by default. On Red Hat, install it as a persistent service after configuring `.env`: `sudo ./scripts/install_service.sh master --user tasker --start` (existing service account with access to the checkout). Foreground launch and systemd are alternative ways to run the same master; use only one.
+
 For local macOS development:
 
 ```bash
