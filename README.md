@@ -4,7 +4,7 @@ A generic collector orchestrator: FastAPI master, HTTP workers, host inventory, 
 
 ## Install and start
 
-For Red Hat master/worker installation, the backup-collector integration and systemd examples, see [the Red Hat installation guide](docs/installation-redhat.md).
+The Red Hat layout keeps the project and runtime data under `/data/tasker`; the SQLite database is `/data/tasker/var/orchestrator.db`, not a file under the system `/var`. For Red Hat master/worker installation, the backup-collector integration and systemd examples, see [the Red Hat installation guide](docs/installation-redhat.md).
 
 Python 3.11 or 3.12 is required.
 

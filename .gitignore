@@ -10,3 +10,6 @@ __pycache__/
 
 # Machine-specific host export; publish only the empty template.
 inventory/hosts.json
+
+# Locally installed external collectors and their private configuration.
+/tools/

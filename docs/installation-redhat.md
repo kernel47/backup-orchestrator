@@ -8,31 +8,54 @@ This procedure follows the current launch scripts. The application and subproces
 
 - Python 3.11 or 3.12 with pip and venv, Git, and access to the Python packages or an internal package mirror. Use the interpreter/package source approved for your Red Hat release. Do not replace the system Python.
 - A dedicated service account, shown below as `tasker`, with read/write access to its Tasker checkout and `var/` directory. Run installation and launch commands as that account; root is only needed for machine provisioning and systemd units.
-- `/opt/tasker` on each machine for Tasker; `/opt/backup-collectors` on eligible satellites for the external tool. Paths can be changed consistently.
+- `/data/tasker` on each machine for Tasker; `/data/tasker/tools/backup-collectors` on eligible satellites for the external tool. Paths can be changed consistently.
 - Workers connect outbound to the master. They need no incoming worker port. They also need access to the collection targets and destinations required by backup-collector.
 - For remote deployments, expose the dashboard/API through HTTPS with a valid certificate and restrict network access. The uvicorn listener itself is plain HTTP; the examples below assume a controlled pilot network or an HTTPS reverse proxy configured separately. Do not disable certificate checks or SELinux to make the deployment work.
 
-Clone the repository into `/opt/tasker` on the master and each satellite using the same tested commit:
+Clone the repository into `/data/tasker` on the master and each satellite using the same tested commit:
 
 ```bash
-git clone git@github.com:kernel47/backup-orchestrator.git /opt/tasker
-cd /opt/tasker
+git clone git@github.com:kernel47/backup-orchestrator.git /data/tasker
+cd /data/tasker
 git rev-parse HEAD
 python3.12 --version
 ```
 
 The destination must be writable by the service account. SSH clone requires repository access; an approved source archive is also usable. If copying a Mac checkout instead, exclude `.venv/`, `.env`, `.env.worker`, `var/`, caches and the local `inventory/hosts.json`. Build each virtual environment on its own Red Hat machine.
 
+## Keep application files under /data/tasker
+
+`var/` is a directory inside the checkout, not the system `/var` directory. With the supplied launchers and working directory, `DATABASE_URL=sqlite:///var/orchestrator.db` resolves to `/data/tasker/var/orchestrator.db`. SQLite WAL/SHM sidecars stay next to that file. Backups are created under `/data/tasker/var/backups/` by default.
+
+```text
+/data/tasker/
+├── .env                         # Master runtime configuration
+├── .env.worker                  # Satellite runtime configuration
+├── .venv/                       # Tasker Python environment
+├── config/worker_scripts.yaml   # Local executable mappings
+├── inventory/hosts.json         # Local host export
+├── var/
+│   ├── orchestrator.db          # Master configuration and execution history
+│   ├── backups/
+│   └── logs/                    # Local launcher logs, when used
+└── tools/backup-collectors/
+    └── .venv/                   # External collector environment
+```
+
+Each machine keeps its own files in this layout. Workers do not need a copy of the master's database or `.env`. The local `tools/` tree is ignored by Tasker's Git repository; install and maintain the external tool separately inside that directory. If changing the checkout location, update the command's absolute path and any service WorkingDirectory/ExecStart paths.
+
+For an explicitly absolute SQLite path, the equivalent master setting is `DATABASE_URL=sqlite:////data/tasker/var/orchestrator.db` (four slashes after `sqlite:`). Do not use `sqlite:////var/orchestrator.db`, which would refer to the system `/var` directory.
+
 ## 1. Install the master
 
 ```bash
-cd /opt/tasker
+cd /data/tasker
 PYTHON=python3.12 ./scripts/install_master.sh
 ```
 
 Use `PYTHON=python3.11` if that is your installed supported interpreter. Installation creates `.venv`, installs dependencies and initializes an empty database. It creates `.env` from `.env.master.example` with random dashboard/API/session secrets when the file does not exist. Existing credentials and data are preserved.
 
-Edit `/opt/tasker/.env` and replace `MASTER_PRIVATE_IP` with the address to bind:
+Edit `/data/tasker/.env` and replace `MASTER_PRIVATE_IP` with the address to bind:
 
 ```dotenv
 MASTER_HOST=MASTER_PRIVATE_IP
@@ -67,11 +90,11 @@ Each satellite belongs to one zone. For example, provision `EMEA-SAT-1` in EMEA 
 On each satellite:
 
 ```bash
-cd /opt/tasker
+cd /data/tasker
 PYTHON=python3.12 ./scripts/install_worker.sh
 ```
 
-Edit `/opt/tasker/.env.worker` using the provisioned ID and token:
+Edit `/data/tasker/.env.worker` using the provisioned ID and token:
 
 ```dotenv
 MASTER_URL=https://tasker.example.internal
@@ -94,26 +117,26 @@ The worker runs in the foreground and should become **Up** in Configuration → 
 
 ## 4. Install backup-collector on eligible satellites
 
-Tasker does not distribute or install the external backup-collectors project. Install your approved version separately on every satellite that will execute it. A separate virtual environment avoids dependency conflicts.
+Tasker does not distribute or install the external backup-collectors project. Place your approved checkout under `/data/tasker/tools/backup-collectors` on every satellite that will execute it. A separate virtual environment avoids dependency conflicts.
 
 If your project provides a pip-installable package, from its checkout:
 
 ```bash
-cd /opt/backup-collectors
+cd /data/tasker/tools/backup-collectors
 python3.12 -m venv .venv
 .venv/bin/pip install .
 ```
 
 Otherwise use that project's documented installation method. The following integration assumes it exposes the `backup-collector` executable shown in your CLI.
 
-Configure NetBackup credentials, API/SSH access and output destinations through backup-collector's own configuration. Tasker does not decide whether output goes to console, OpenSearch, Backup Hub or another destination. Ensure the tool can find its configuration when executed as the worker account from `/opt/tasker`; do not rely on an activated shell or a different current directory. If it needs exported environment variables, provide those through the worker service environment: merely adding arbitrary keys to Tasker's `.env.worker` does not export them to child commands.
+Configure NetBackup credentials, API/SSH access and output destinations through backup-collector's own configuration. Tasker does not decide whether output goes to console, OpenSearch, Backup Hub or another destination. Ensure the tool can find its configuration when executed as the worker account from `/data/tasker`; do not rely on an activated shell or a different current directory. If it needs exported environment variables, provide those through the worker service environment: merely adding arbitrary keys to Tasker's `.env.worker` does not export them to child commands.
 
-On each eligible satellite, edit `/opt/tasker/config/worker_scripts.yaml`. Keep the same `backup_collector` alias on the master so the dashboard offers it. The executable path may differ per satellite:
+On each eligible satellite, edit `/data/tasker/config/worker_scripts.yaml`. Keep the same `backup_collector` alias on the master so the dashboard offers it. The executable path may differ per satellite:
 
 ```yaml
 backup_collector:
   command:
-    - /opt/backup-collectors/.venv/bin/backup-collector
+    - /data/tasker/tools/backup-collectors/.venv/bin/backup-collector
     - collect
   report_format: backup_collector
   context_args:
@@ -139,7 +162,7 @@ Restart the worker after installing updated Tasker Python code. Changes to the c
 The database is the source of truth for the master configuration. A local host export is only an input for inventory synchronization. Start with the empty template if needed:
 
 ```bash
-cd /opt/tasker
+cd /data/tasker
 cp inventory/hosts.example.json inventory/hosts.json
 ```
 
@@ -170,6 +193,8 @@ A valid business failure report is preserved even when the command exits nonzero
 
 The supplied shell launchers run in the foreground. For unattended use, an administrator can create the following units. These are deployment examples to validate on your Red Hat host; adapt the service account, paths and network settings. Run either the foreground process or the service, never both for the same master or worker ID.
 
+Application files and the database remain under `/data/tasker`. Only optional service registration files live in `/etc/systemd/system`; systemd captures service output in its normal journal. For a foreground pilot, no systemd unit installation is required.
+
 Master: `/etc/systemd/system/tasker-master.service`
 
 ```ini
@@ -182,8 +207,8 @@ After=network-online.target
 Type=simple
 User=tasker
 Group=tasker
-WorkingDirectory=/opt/tasker
-ExecStart=/opt/tasker/scripts/start_master.sh
+WorkingDirectory=/data/tasker
+ExecStart=/data/tasker/scripts/start_master.sh
 Restart=on-failure
 RestartSec=5
 UMask=0077
@@ -204,8 +229,8 @@ After=network-online.target
 Type=simple
 User=tasker
 Group=tasker
-WorkingDirectory=/opt/tasker
-ExecStart=/opt/tasker/scripts/start_worker.sh
+WorkingDirectory=/data/tasker
+ExecStart=/data/tasker/scripts/start_worker.sh
 Restart=on-failure
 RestartSec=5
 UMask=0077
@@ -230,7 +255,7 @@ Use `tasker-worker` instead on a satellite. Both unit examples deliberately leav
 On the master, take and verify a backup before an update:
 
 ```bash
-cd /opt/tasker
+cd /data/tasker
 .venv/bin/python -m scripts.backup --check-restore
 ```
 
