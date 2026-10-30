@@ -1,0 +1,19 @@
+{% macro pagination(total,page,pages,size,noun='items',resizable=true) %}
+{% if total>25 or pages>1 %}
+<nav class="pagination" aria-label="{{noun|title}} pagination">
+  <span class="pagination-summary">
+<strong>{{(page-1)*size+1}}–{{[page*size,total]|min}}</strong> of <strong>{{total}}</strong> {{noun}}</span>
+  {% if resizable %}<form method="get" class="pagination-size">{% for key,value in request.query_params.multi_items() if key not in ['page','page_size'] %}<input type="hidden" name="{{key}}" value="{{value}}">{% endfor %}<label>Rows per page<select name="page_size" onchange="this.form.requestSubmit()">{% for count in [10,25,50,100] %}<option value="{{count}}" {{'selected' if size==count}}>{{count}}</option>{% endfor %}</select>
+</label>
+<noscript>
+<button class="button small">Apply</button>
+</noscript>
+</form>{% endif %}
+  <div class="pagination-pages">
+    {% if page>1 %}<a class="page-control" href="{{request.url.include_query_params(page=page-1)}}" aria-label="Previous page">‹</a>{% else %}<span class="page-control disabled" aria-disabled="true">‹</span>{% endif %}
+    {% for number in range(1,pages+1) %}{% if number==1 or number==pages or (number>=page-1 and number<=page+1) %}{% if number==page %}<span class="page-number current" aria-current="page">{{number}}</span>{% else %}<a class="page-number" href="{{request.url.include_query_params(page=number)}}" aria-label="Page {{number}}">{{number}}</a>{% endif %}{% elif number==page-2 or number==page+2 %}<span class="page-ellipsis">…</span>{% endif %}{% endfor %}
+    {% if page<pages %}<a class="page-control" href="{{request.url.include_query_params(page=page+1)}}" aria-label="Next page">›</a>{% else %}<span class="page-control disabled" aria-disabled="true">›</span>{% endif %}
+  </div>
+</nav>
+{% endif %}
+{% endmacro %}

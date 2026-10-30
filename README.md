@@ -1,103 +1,184 @@
-# Backup Orchestrator
+# Tasker
 
-Projet Python 3.12 / Prefect 3.8.8 pour orchestrer des collectes de sauvegarde depuis six satellites Linux. Un seul dépôt Bitbucket et un `.env` local par machine. Aucun conteneur, service Redis, broker ou interface personnalisée à installer.
+A generic collector orchestrator: FastAPI master, HTTP workers, host inventory, schedules and execution history. A fresh installation contains no configured objects or synthetic history. Only the `fake` collector returns simulated results when explicitly configured and executed.
 
-Le serveur central héberge API, UI, scheduler et base Prefect. Les satellites exécutent les flows via des workers `process`. Le serveur ne collecte aucune donnée NetBackup.
+## Install and start
 
-```mermaid
-flowchart LR
-    S[Prefect Server : API / UI / Scheduler] --- DB[(SQLite locale)]
-    E1[emea-sat01] -->|poll HTTP API| S
-    E2[emea-sat02] -->|poll HTTP API| S
-    A1[apac-sat01] -->|poll HTTP API| S
-    A2[apac-sat02] -->|poll HTTP API| S
-    M1[amer-sat01] -->|poll HTTP API| S
-    M2[amer-sat02] -->|poll HTTP API| S
-    E1 & E2 & A1 & A2 & M1 & M2 -->|netbackup-py| N[NetBackup régional]
-    E1 & E2 & A1 & A2 & M1 & M2 -->|JSON POST| H[Backup Hub]
-```
+For Red Hat master/worker installation, the backup-collector integration and systemd examples, see [the Red Hat installation guide](docs/installation-redhat.md).
 
-## État de l'intégration
-
-La partie Prefect, la validation, le traitement par lots et le transport HTTP sont implémentés. **Les six méthodes de `NetBackupCollector` sont volontairement non implémentées** : l'interface du module privé `netbackup-py` n'est pas disponible. Une collecte réelle échoue clairement tant que ce raccordement n'est pas effectué.
-
-Le parser et le POST proposent une enveloppe JSON versionnée. Son format, l'authentification Bearer, l'acceptation complète d'un lot sur réponse 2xx et la déduplication doivent être confirmés avec Backup Hub. Voir [le contrat d'intégration](docs/integrations.md). Aucun résultat NetBackup fictif n'est produit.
-
-## Structure
-
-- `server/` : définition et registration reproductible de six pools et 24 deployments.
-- `workers/common/` : configuration locale et validation des paramètres.
-- `workers/collectors/` : accès aux technologies de sauvegarde.
-- `workers/parsers/` : transformation JSON et lots.
-- `workers/outputs/` : transport Backup Hub.
-- `workers/flows/` : orchestration Prefect.
-- `config/`, `scripts/`, `systemd/` : installation et services.
-- `docs/`, `tests/` : exploitation et tests sans infrastructure NetBackup.
-
-## Installation rapide
-
-Prérequis : Linux avec systemd, Python 3.12, Git, accès aux dépôts de paquets et au dépôt Bitbucket, connectivité régionale. Installation de référence : Ubuntu 24.04, utilisateur `backup`, dossiers distincts `/data/backup-orchestrator/server` et `/data/backup-orchestrator/worker`.
-
-Serveur : suivre [installation-server.md](docs/installation-server.md). Satellites : suivre [installation-worker.md](docs/installation-worker.md).
+Python 3.11 or 3.12 is required.
 
 ```bash
-# Dans le clone sur le serveur
-bash scripts/install_server.sh
-# Éditer .env avant registration et lancement
-venv/bin/python -m server.register
+PYTHON=python3.12 ./scripts/install_master.sh
+./scripts/start_master.sh
 ```
+
+For local macOS development:
 
 ```bash
-# Dans le clone sur chaque satellite
-bash scripts/install_worker.sh
-# Éditer .env et raccorder le module interne avant collecte réelle
-venv/bin/python -m scripts.run_service worker
+PYTHON=python3.12 ./scripts/install_mac.sh
+./scripts/start_local.sh
+./scripts/stop_local.sh
 ```
 
-## Exécution manuelle et planification
+Local startup launches only the master. Neither installation nor startup imports configuration or creates workers. The master uses one uvicorn process and SQLite; do not run multiple master processes against the same database.
 
-Dans Prefect UI, sélectionner un deployment puis Run et renseigner les paramètres. Exemples :
+Sign in using `AUTH_USERNAME` and `AUTH_PASSWORD` in the master `.env`. Installation generates random secrets. Restart after changing credentials; existing browser sessions become invalid. `ADMIN_TOKEN` is the administrator API bearer token. Keep `.env` private and use HTTPS for remote access.
+
+On each satellite:
+
+```bash
+PYTHON=python3.12 ./scripts/install_worker.sh
+# Configure MASTER_URL, WORKER_ID and WORKER_TOKEN in .env.worker.
+./scripts/start_worker.sh
+```
+
+Create its zone and scope, then register the satellite in Configuration → Satellites. Copy the one-time token into the worker's `.env.worker`. A satellite belongs to exactly one zone, uses outbound HTTP and needs no inventory file or master credentials.
+
+The master reads `.env`; `start_worker.sh` reads `.env.worker` independently, including when both run on the same Mac. Pass another file as the first argument to start another worker: `./scripts/start_worker.sh /path/to/another-worker.env`. Worker secret files must not be committed.
+
+## Set up an empty workspace
+
+1. **Configuration → Zones / Scopes:** create your locations and collector categories.
+2. **Configuration → Satellites:** register workers, scopes, concurrency and zone. Start the workers.
+3. **Inventory → Sources & discovery:** read your host file, review differences and apply them.
+4. **Inventory → Hosts:** activate discovered hosts. Missing hosts are reported; they are never deleted automatically.
+5. **Inventory → Host groups:** organize hosts into reusable target sets. Groups select members but never modify their activation state. Select one or more rows in Inventory → Hosts and use Activate selected / Disable selected. The header checkbox selects visible, non-deleted hosts; changing filters clears hidden selections. Activation validates routing and schedule compatibility atomically.
+6. **Configuration → Collector settings:** create a collector; select `fake` to test without contacting equipment.
+7. **Schedules:** use Add schedule, choose the collector, groups, parameters and frequency in the selected zone. Daily `07:00` uses each target worker's local timezone.
+8. **Collectors / Runs & history:** inspect daily health in Collectors, then open History for host/hour/status details. Retry failures or rerun successful periods without losing attempts.
+
+Overview summarizes collectors, workers and inventory in the current zone workspace. Scope tabs are generated from configured objects.
+
+## Inventory
+
+Copy `inventory/hosts.example.json` to the ignored local file `inventory/hosts.json`, then populate it. The expected format is:
 
 ```json
-{"asset":"jobs","start_date":"2026-10-11T00:00:00Z","end_date":"2026-10-12T00:00:00Z"}
+{"version": 1, "hosts": []}
 ```
+
+Add hosts with this format (the referenced zone must already exist):
 
 ```json
-{"asset":"image_contents","image_id":"IDENTIFIANT_IMAGE"}
+{"id":"host-01","zone":"EMEA","scope":"NetBackup","parameters":{}}
 ```
 
-Une seule date borne la requête d'un côté ; la gestion de cette borne appartient au véritable adaptateur. Les jobs/images sans dates demandent la portée par défaut du client, à définir avant production. Aucun calcul de période glissante implicite n'est inventé.
-
-Les horaires sont dans le `.env` serveur. Réexécuter `python -m server.register` applique les modifications. Détails : [deployments.md](docs/deployments.md).
-
-Pour mettre à jour, mettre le pool en pause, attendre la fin des runs, puis `bash scripts/update_worker.sh TAG_VALIDÉ`. Réactiver le pool après vérification. Le script conserve le worker arrêté si une étape échoue.
-
-## Ajouter un collector
-
-Ajouter un module `workers/collectors/datadomain.py`, un parser si nécessaire et un flow dédié appelant l'output commun. Définir ses deployments côté serveur. Aucune classe abstraite ni registre de plugins n'est nécessaire.
-
-## Tests
+Optional `preferred_worker` and `fallback_worker` must match the host's zone and scope. Without a preferred worker, any eligible worker in the zone can execute its task. JSON and YAML use the same version-1 envelope. Files are limited to 1 MB and 10,000 unique hosts.
 
 ```bash
-python3.12 -m venv venv
-venv/bin/pip install -r requirements-dev.txt
-PREFECT_HOME="$PWD/.runtime/prefect" venv/bin/python -m pytest -q
+# Discover changes from a static file, then review in the dashboard.
+.venv/bin/python -m scripts.sync_inventory --zone EMEA
+# Discover and apply; new hosts remain disabled until activated.
+.venv/bin/python -m scripts.sync_inventory --apply
+# Use YAML instead.
+.venv/bin/python -m scripts.sync_inventory --file inventory/hosts.yaml
+# After implementing collect_hosts(): refresh from your API, then discover.
+.venv/bin/python -m scripts.sync_inventory --refresh
 ```
 
-Les données de tests sont des fixtures synthétiques. Les dépendances directes sont figées ; établir un verrou complet dans votre environnement Linux avant diffusion d'une version validée.
+Only adapt `collect_hosts()` in `scripts/sync_inventory.py` for your API. It intentionally contains no provider implementation. Return a list of host dictionaries; store API credentials in `.env`. A failed refresh preserves the previous file. Static lists need no Python changes. The dashboard reads files and never executes provider code.
 
-## Références Prefect
+Discover creates a reviewable preview of new, changed, unchanged, missing and archived hosts. Apply is atomic and rejects stale previews. Existing activation states are preserved; archived hosts are not automatically restored. The script reuses or creates a file source and prints a change summary. The dashboard also offers Discover and Apply. External tools can push the same envelope to `POST /api/inventory/discover` using the admin bearer token and an `X-Tasker-Zone` header.
 
-API et commandes contrôlées avec Prefect 3.8.8 et les sources officielles : [code local](https://docs.prefect.io/v3/how-to-guides/deployments/store-flow-code), [serveur](https://docs.prefect.io/v3/how-to-guides/self-hosted/server-cli), [SDK deployments](https://reference.prefect.io/prefect/deployments/runner/).
+## Configuration and storage
 
-## Un seul dossier applicatif
+The database is the only source of truth for zones, scopes, satellites, hosts, host groups, collectors, schedules and inventory sources. Manage these objects through the dashboard or authenticated API. There are no declarative object YAML files or configuration import command.
 
-Tout reste sous le clone, par exemple `/data/backup-orchestrator/server` pour le serveur et `/data/backup-orchestrator/worker` pour le worker : `.env`, `venv`, code et `.runtime/` (base SQLite, fichiers Prefect, profils, stockage, home technique, caches, temporaires et logs). Ces chemins sont calculés depuis le code et ne dépendent pas du répertoire courant. `.runtime/` est exclu de Git.
+Only three external inputs remain:
 
-Pour utiliser `/data/autre-dossier`, cloner à cet emplacement et renseigner `WORKER_CODE_PATH` dans le `.env` serveur avec le chemin des clones satellites. `scripts/install_service.sh server|worker` génère le service dans `.runtime/systemd/` avec le chemin réel. L'exemple statique `prefect.yaml` doit aussi être adapté si vous l'utilisez à la place de la registration.
+- `.env`: master/worker runtime settings and credentials.
+- `inventory/hosts.json` (or YAML): host discovery input; preview/apply synchronizes it into the database while preserving managed activation and history.
+- `config/worker_scripts.yaml`: allowed collector aliases mapped to installed Python files or fixed command definitions. It includes the `fake` Python script and a `backup_collector` CLI definition; install that CLI separately on eligible workers. Install the same script aliases/code on the workers that execute them. This file authorizes executable code; the dashboard cannot change it.
 
-Les unités restent dans le dossier applicatif ; systemd crée uniquement les liens nécessaires dans `/etc/systemd/system`. Les logs applicatifs sont dans `.runtime/logs/prefect-server.log` et `.runtime/logs/prefect-worker.log` ; journald conserve les événements système du service. Python, Git et systemd restent des prérequis système.
+## Source layout
 
-Pour tester serveur et worker sur la même machine, suivre [development-local.md](docs/development-local.md). La télémétrie est désactivée dans les modèles `.env`.
+| Directory | Responsibility |
+| --- | --- |
+| `orchestrator/` | FastAPI routes, authentication, domain services, persistence and scheduling |
+| `orchestrator/inventory_service.py` | Read host files, preview differences and apply changes |
+| `orchestrator/templates/`, `orchestrator/static/` | Dashboard interface |
+| `worker/` | Poll tasks, execute allowlisted scripts and report results |
+| `collectors/fake.py` | Only retained fake implementation: success, failure, timeout and sample data |
+| `inventory/` | Static or externally regenerated host export |
+| `config/` | Collector script allowlist only |
+| `scripts/` | Installation, lifecycle, inventory sync and audits |
+| `tests/fixtures/` | Isolated test data; never imported by normal installation/startup |
+| `var/` | Local database, logs and backups; ignored by Git |
 
-Serveur et worker ont chacun un clone séparé du même dépôt, leur propre `.env`, `venv/` et `.runtime/`. Cela reste vrai sur une seule machine DEV. La base est uniquement dans le dossier serveur ; les workers n'hébergent pas de base Prefect. Ne pas partager un fichier `.env` ou un virtualenv entre les deux rôles.
+Collectors either implement `collect(context) -> dict` or run as an allowlisted command that writes its report JSON to stdout and logs to stderr. The `backup_collector` command accepts its native JSON: Tasker trusts its final status and keeps collection/storage/destination diagnostics in Details without interpreting them. They send their business data directly to their destination. Tasker receives only a small execution report and captured logs:
+
+```json
+{
+  "status": "SUCCESS",
+  "summary": "125 jobs collected and delivered",
+  "collected_at": "2026-10-22T07:02:15Z",
+  "records_collected": 125,
+  "records_sent": 125,
+  "details": {
+    "collection": "Completed",
+    "delivery": "Completed",
+    "reference": "optional-external-reference"
+  },
+  "error": null
+}
+```
+
+Final report statuses are **SUCCESS**, **FAILURE**, **TIMEOUT** and **UNKNOWN**. Reports include the summary, collection timestamp, start/end dates, duration, attempt number, host/worker/collector identity, requested period, collected/sent counters, error and optional details. The worker/master supplies execution metadata; the collector handles data retrieval and delivery. Business datasets never belong in the report. See [the complete report format, statuses and logs](docs/scripts.md).
+
+## Verification
+
+```bash
+.venv/bin/python -m pytest -q
+.venv/bin/python -m scripts.audit_state
+```
+
+Tests use isolated databases and test-only configuration. No seeding command is shipped in `scripts/`. This V0 runs one SQLite master scheduler. Named users have zone/role permissions; no external notification delivery is configured. Trusted collectors execute with the worker service account's permissions.
+
+## Live dashboard
+
+Overview, Collectors, Runs & history and attempt details use in-place navigation and background HTML updates. Live can be paused; Refresh now requests an update. Filters, hour/status selections and pagination keep browser history and scroll position. Updates pause while the tab is hidden, during input/selection, open logs/details or recent interactions. Filter controls survive background updates. Management pages do not poll; local satellite clocks continue ticking without network requests. Running tasks use a subtle CSS pulse, disabled when reduced motion is requested.
+
+## Zone workspaces and daily monitoring
+
+Select the zone using the workspace selector at the bottom of the sidebar. Overview, collectors, hosts, groups, schedules, sources, satellites and history are scoped to it. New objects inherit that zone. No zone means the first-zone setup screen. The last selected zone is remembered; each tab also carries its own workspace in links and fetch headers. Switching zones opens Overview and drops object/filter IDs from the previous zone.
+
+Collectors, groups, schedules and sources have persisted zone ownership. A group cannot span zones; a schedule cannot target a collector/group in another zone. Scripts and scope categories are shared, while collector configuration is per zone. System bearer-token integrations may enumerate all zones; specify `X-Tasker-Zone: EMEA` for scoped reads/writes. Normal browser users cannot bypass zone filtering with an object ID. IDs for hosts/satellites remain globally unique; use qualified IDs. Collector names may repeat, and conflicting new collector IDs get a zone prefix.
+
+Startup migrates old shared definitions into zone-owned copies when needed. Existing period and attempt IDs and report/log contents are preserved. A multi-zone inventory preview expires and must be discovered again; use one source/file per zone. Make a backup before upgrading.
+
+Collectors owns the period summary counters (expected, successful, failed and running/pending), filtered by workspace, scope and selected date/period. History keeps the execution list and status filters without duplicating these summary cards. Collectors opens in Week by default. Week and Month include the same period overview and Previous/Next controls as History; Day has neither overview nor period navigation. Collectors shows one cell per collector/day (current week by default; Day and Month also available). Failure takes priority over missing/unknown, then active execution, then success. Future periods are planned, never missing. Recovered means a successful period had an earlier failed/unknown/timed-out attempt; the original attempts remain in History. Click a day to open History with the collector/date/workspace selected. History has an optional hour selector in Advanced filters, no 24-hour grid. Retry applies to failed, unknown, missing or timed-out periods; Run again applies to successful periods. Running/pending periods cannot be queued twice. Replays can repeat destination delivery: collectors must handle deduplication/idempotency.
+
+Overview shows a live seven-day activity chart, the six latest execution attempts, and collector health based on the latest period per host. Click a chart day or execution to inspect history. Satellite management stays under Configuration. Collector settings uses a scope-based table with separate View/Edit detail pages and a dedicated Add collector form. Health cards show the last success and overdue hosts for enabled schedules. Last success is the collector's most recent successful attempt, not a guarantee that every host succeeded. Paused schedules are labelled separately. Tasker monitors script execution/delivery; a successful script can collect failed business/backup jobs. Those job results are analyzed at the collector's destination.
+
+Schedules is a table with Add schedule and individual detail/edit pages. New intervals are 1, 2, 4, 6, 12 or 24 hours, or daily at a satellite-local time (including DST). Older intervals remain readable and unchanged.
+
+## Accounts and zone permissions
+
+The `.env` administrator and system API token retain global administration. Add named users in the database with a prompted password (scrypt hash, never plaintext):
+
+```bash
+.venv/bin/python -m scripts.user alice --role operator --zones EMEA
+.venv/bin/python -m scripts.user bob --role viewer --zones APAC,AMER
+# Disable an account and invalidate its sessions.
+.venv/bin/python -m scripts.user alice --zones EMEA --disable
+```
+
+Viewer: read allowed zones. Operator: read plus plan, retry and run collectors in allowed zones. Admin: configure objects in allowed zones. Only the global administrator manages the shared zone/scope registry. Sessions expire after 12 hours; disabling a user or changing its credentials/permissions invalidates its sessions. Configure HTTPS at your reverse proxy before exposing the master; session cookies become Secure over HTTPS. Keep the master listener private and store `.env` and backups with restricted filesystem permissions.
+
+## Backup, history and operational checks
+
+SQLite reports and attempt metadata are retained; no automatic history purge is enabled. Zone/period and attempt indexes support date-based lookup. Detailed logs can be cleared separately; take a backup first. History queries are date-bounded and full attempt reports/logs are loaded only for visible rows. Very large month views still aggregate period metadata in the single master process: validate expected production volume before rollout.
+
+```bash
+# Online snapshot plus restore into a temporary database and integrity check.
+.venv/bin/python -m scripts.backup --check-restore
+# Read-only consistency audit.
+.venv/bin/python -m scripts.audit_state
+# Preview old log cleanup; reports and period/attempt metadata are preserved.
+.venv/bin/python -m scripts.retention --logs-days 30
+# Explicitly apply the same cleanup after reviewing its count and backup.
+.venv/bin/python -m scripts.retention --logs-days 30 --apply
+```
+
+Backups are mode 0600 and include configuration, account hashes and history. Restore requires stopping the master and restoring a verified snapshot to DATABASE_URL; do not replace a running SQLite database. Restore drills never overwrite the master. Set up recurring backups and external monitoring of `/health` in your deployment environment. Satellite availability, failed/missing collections and overdue hosts are visible in Overview; external email/chat notifications need a separately configured destination.

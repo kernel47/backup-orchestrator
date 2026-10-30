@@ -1,18 +1,14 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
-
 [project]
-name = "backup-orchestrator"
+name = "tasker-orchestrator"
 version = "0.1.0"
-requires-python = ">=3.12,<3.13"
-dynamic = ["dependencies"]
-
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
-
+requires-python = ">=3.11,<3.13"
+dependencies = ["fastapi", "uvicorn", "sqlalchemy>=2", "httpx", "pydantic-settings", "pyyaml", "jinja2", "python-multipart", "python-dotenv"]
+[project.optional-dependencies]
+test = ["pytest"]
 [tool.setuptools.packages.find]
-include = ["workers*", "server*", "scripts*"]
-
+include = ["orchestrator*", "worker*", "collectors*"]
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% from '_table_actions.html' import action_link,action_button %}
+{% block content %}
+<div class="page-heading">
+<div>
+<div class="eyebrow">{{'ORCHESTRATION' if view=='schedules' else 'INVENTORY'}}</div>
+<h1>{{'Hosts' if view=='hosts' else 'Host groups' if view=='groups' else 'Schedules & group runs'}}</h1>
+<p>{{'Review discovered hosts and control which ones collectors can use.' if view=='hosts' else 'Reuse a group of hosts across collectors. Hosts can belong to several groups.' if view=='groups' else 'Choose a collector, its target groups and zones, then run it or set a schedule.'}}</p>
+</div>
+</div>
+{% if view=='hosts' %}
+<form class="filters inventory-filter" onsubmit="return false">
+<label>Search hosts<input type="search" id="host-search" placeholder="Host ID, scope or zone">
+</label>
+<label>Scope<select id="host-scope">
+<option value="">All scopes</option>{% for scope in catalog.scopes %}<option>{{scope}}</option>{% endfor %}</select>
+</label>
+
+<label>State<select id="host-state">
+<option value="">All states</option>
+<option value="discovered">Discovered</option>
+<option value="active">Active</option>
+<option value="disabled">Disabled</option>
+<option value="deleted">Deleted</option>
+</select>
+</label>
+<label>Host group<select id="host-group">
+<option value="">All host groups</option>{% for group in groups %}<option value="{{group.id}}" {{'selected' if request.query_params.get('group_id')==group.id}}>{{group.name}}</option>{% endfor %}</select>
+</label>
+</form>
+<section class="panel">
+<div class="panel-heading">
+<h2>Host inventory</h2>
+<a class="button" href="/?view=sources">Discover / sync hosts</a>
+<span class="quiet-chip" id="host-count">{{hosts|length}} hosts</span>
+</div>
+<div class="host-bulk-toolbar" role="group" aria-label="Selected hosts actions">
+<span id="host-selected-count" aria-live="polite">0 selected</span>
+<button type="button" class="button small" id="hosts-activate-selected" disabled>Activate selected</button>
+<button type="button" class="button small" id="hosts-disable-selected" disabled>Disable selected</button>
+<span class="hint">Select hosts individually or all visible hosts.</span>
+</div>
+<div class="table-scroll">
+<table id="host-table">
+<thead>
+<tr>
+<th><input type="checkbox" id="host-select-all" aria-label="Select all visible hosts"></th>
+<th>Host</th>
+<th>Scope</th>
+<th>Zone</th>
+<th>Host groups</th>
+<th>Preferred satellite</th>
+<th>Fallback</th>
+<th>State</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>{% for host in hosts %}{% set memberships=[] %}{% for group in groups if host.id in group.host_ids %}{% set _=memberships.append(group.id) %}{% endfor %}<tr data-host-row data-state="{{'deleted' if host.deleted else 'discovered' if host.discovered else 'active' if host.enabled else 'disabled'}}" data-scope="{{host.scope}}" data-zone="{{host.zone}}" data-groups='{{memberships|tojson}}'>
+<td><input type="checkbox" name="selected-host" value="{{host.id}}" aria-label="Select {{host.id}}" {{'disabled' if host.deleted}}></td>
+<td class="strong">{{host.id}}</td>
+<td>{{host.scope}}</td>
+<td>{{host.zone}}</td>
+<td>{% for group in groups if host.id in group.host_ids %}<span class="quiet-chip">{{group.name}}</span> {% else %}—{% endfor %}</td>
+<td>{{host.preferred_worker}}</td>
+<td>{{host.fallback_worker}}</td>
+<td>
+<span class="badge {{'SUCCESS' if host.enabled else 'DISABLED'}}">{{'Deleted' if host.deleted else 'Discovered' if host.discovered else 'Enabled' if host.enabled else 'Disabled'}}</span>
+</td>
+<td>
+<div class="table-actions">{% if host.deleted %}{{action_button('Restore disabled host: '+host.id,'restore',{'data-host-state':host.id,'data-enable':'false','data-restore':'true'})}}{% else %}{{action_button(('Disable ' if host.enabled else 'Activate ')+host.id,'pause' if host.enabled else 'activate',{'data-host-state':host.id,'data-enable':'false' if host.enabled else 'true'})}}{{action_button('Delete '+host.id,'delete',{'data-archive-host':host.id})}}{% endif %}</div>
+</td>
+</tr>{% endfor %}</tbody>
+</table>
+<p id="host-empty" class="empty-state" hidden>No hosts match these filters.</p>
+</div>
+</section>
+<p class="hint">Activate a discovered host to include it in collections. Deleting removes it from active targets and keeps its execution history.</p>
+{% elif view=='groups' %}
+<section class="panel settings-intro">
+<h2>Create host group</h2>
+<p>Select the hosts to include. Each collector uses only active hosts with a matching scope.</p>{% set group=none %}{% include '_group_form.html' %}</section>
+<section class="section-heading">
+<h2>Your host groups</h2>
+<span class="quiet-chip">{{groups|length}} groups</span>
+</section>
+{% for group in groups %}<section class="panel settings-intro">
+<div class="group-heading">
+<div>
+<h2>{{group.name}} <span class="quiet-chip">{{'Enabled' if group.enabled else 'Disabled'}}</span>
+</h2>
+<p>{{group.description or 'Manual host group'}} · {{group.host_ids|length}} hosts</p>
+</div>
+<div class="group-actions">
+<button class="button" data-group-state="{{group.id}}" data-enable="{{'false' if group.enabled else 'true'}}">{{'Disable group' if group.enabled else 'Enable group'}}</button>
+<button class="button" data-archive-group="{{group.id}}">Delete</button>
+<a class="button" href="/?view=hosts&group_id={{group.id}}">View hosts</a>
+<a class="button primary" href="/?view=schedules&group_id={{group.id}}">Run / Schedule</a>
+</div>
+</div>
+<details class="group-editor">
+<summary>Edit membership</summary>{% include '_group_form.html' %}</details>
+</section>{% else %}<div class="panel empty-state">No host groups yet. Create your first group above.</div>{% endfor %}
+{% endif %}
+{% endblock %}

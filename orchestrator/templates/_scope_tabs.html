@@ -1,0 +1,8 @@
+<nav class="scope-tabs" aria-label="Collector scopes">
+{% for scope in scope_names %}{% set count=collectors|selectattr('scope','equalto',scope)|list|length %}
+<a class="scope-tab {{'active' if filters.get('scope')==scope}}" href="{{request.url.remove_query_params(['technology','collector_id','host','host_group_id','schedule_id','status','start','end','worker']).include_query_params(scope=scope,page=1)}}" {% if filters.get('scope')==scope %}aria-current="page"{% endif %}>
+<span>{{scope}}</span>
+<span class="scope-count">{{count}}</span>
+</a>
+{% endfor %}
+</nav>

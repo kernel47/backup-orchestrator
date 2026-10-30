@@ -1,0 +1,56 @@
+- id: netbackup_jobs
+  name: Jobs
+  scope: NetBackup
+  script: fake
+  interval_seconds: 600
+  timeout_seconds: 15
+  max_retries: 2
+  enabled: true
+  parameters:
+    simulation: SUCCESS
+    delay_seconds: 1.2
+- id: netbackup_policies
+  name: Policies
+  scope: NetBackup
+  script: fake
+  interval_seconds: 86400
+  timeout_seconds: 15
+  max_retries: 2
+  enabled: true
+  parameters:
+    simulation: SUCCESS
+    delay_seconds: 1.2
+- id: netbackup_images
+  name: Images
+  scope: NetBackup
+  script: fake
+  interval_seconds: 86400
+  timeout_seconds: 15
+  max_retries: 2
+  enabled: true
+  parameters:
+    simulation: SUCCESS
+    delay_seconds: 1.2
+- id: netbackup_slp
+  name: SLP
+  scope: NetBackup
+  script: fake
+  interval_seconds: 86400
+  timeout_seconds: 15
+  max_retries: 2
+  enabled: true
+  parameters:
+    simulation: SUCCESS
+    delay_seconds: 1.2
+- id: datadomain_capacity
+  name: Capacity
+  scope: DataDomain
+  script: fake
+  interval_seconds: 3600
+  timeout_seconds: 15
+  max_retries: 2
+  enabled: true
+  parameters:
+    simulation: SUCCESS
+    delay_seconds: 1.2
+    metric: capacity

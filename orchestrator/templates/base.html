@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="workspace-zone" content="{{active_zone}}">
+<script src="/static/workspace.js?v=workspace-7"></script>
+<meta name="csrf" content="{{csrf}}">
+<title>{% block title %}Tasker{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css?v=structure-16">
+<link rel="stylesheet" href="/static/layout.css?v=table-actions-17">
+<script src="/static/selects.js?v=workspace-sidebar-10" defer>
+</script>
+<script src="/static/calendar.js?v=live-1" defer>
+</script>
+<script src="/static/app.js?v=collector-settings-8" defer>
+</script>
+<script src="/static/administration.js?v=host-selection-1" defer>
+</script>
+<script src="/static/inventory.js?v=workspace-7" defer>
+</script>
+<script src="/static/clocks.js?v=live-1" defer></script>
+<script src="/static/live.js?v=cleanup-9" defer></script>
+</head>
+<body data-user-role="{{user_role}}">
+<script>try{if(localStorage.getItem('tasker.sidebarCollapsed')==='true')document.body.classList.add('sidebar-collapsed');}catch(e){}</script>
+<aside class="sidebar">
+<a class="brand" href="/">
+<span class="brand-mark">▥</span>
+<span>TASKER<small>ORCHESTRATOR</small>
+</span>
+<span class="version">V0</span>
+</a>
+
+<nav aria-label="Main navigation">
+{% for key,href,icon,label,active in [('overview','/?view=overview','◫','Overview',overview|default(false)),('collectors','/','▦','Collectors',view|default('')=='collectors' and not overview|default(false)),('runs','/?view=runs','≋','Runs & history',view|default('')=='runs' or run is defined),('schedules','/?view=schedules','◷','Schedules',view|default('')=='schedules')] %}
+<a data-nav-key="{{key}}" {% if active %}aria-current="page"{% endif %} href="{{href}}" title="{{label}}" aria-label="{{label}}" class="{{'active' if active}}"><span aria-hidden="true">{{icon}}</span><span class="nav-text">{{label}}</span></a>
+{% endfor %}
+<div class="nav-group-label">Inventory</div>
+{% for key,icon,label in [('sources','↻','Sources & discovery'),('hosts','▤','Hosts'),('groups','▦','Host groups')] %}
+<a data-nav-key="{{key}}" {% if view|default('')==key %}aria-current="page"{% endif %} href="/?view={{key}}" title="{{label}}" aria-label="{{label}}" class="nav-child {{'active' if view|default('')==key}}"><span aria-hidden="true">{{icon}}</span><span class="nav-text">{{label}}</span></a>
+{% endfor %}
+<div class="nav-group-label">Configuration</div>
+{% for key,icon,label in [('workspace','⚙','Dashboard & settings'),('workers','⌘','Satellites'),('zones','◎','Zones'),('scopes','◈','Scopes')] %}
+<a data-nav-key="{{key}}" {% if view|default('')==key %}aria-current="page"{% endif %} href="/?view={{key}}" title="{{label}}" aria-label="{{label}}" class="nav-child {{'active' if view|default('')==key}}"><span aria-hidden="true">{{icon}}</span><span class="nav-text">{{label}}</span></a>
+{% endfor %}
+<a data-nav-key="settings" {% if view|default('')=='settings' %}aria-current="page"{% endif %} href="/?view=settings&section=collectors" title="Collector settings" aria-label="Collector settings" class="nav-child {{'active' if view|default('')=='settings'}}"><span aria-hidden="true">⚙</span><span class="nav-text">Collector settings</span></a>
+</nav>
+<div class="sidebar-footer">
+<form class="workspace-picker sidebar-workspace" action="/workspace" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><label class="sr-only" for="workspace-zone">Zone workspace</label><select id="workspace-zone" name="zone_id" aria-label="Zone workspace" onchange="this.form.submit()">{% for zone in workspace_zones %}<option value="{{zone.id}}" {{'selected' if zone.id==active_zone}}>{{zone.name}}</option>{% else %}<option>Create your first zone</option>{% endfor %}</select></form>
+<a href="/docs" target="_blank">API documentation ↗</a>
+</div>
+</aside>
+<main>
+{% set live_enabled = view|default('') in ['overview','collectors','runs'] or run is defined %}
+<header class="topbar">
+<button class="icon-button sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">☰</button>
+
+<div class="topbar-actions">
+{% if live_enabled %}<div class="live-toolbar" aria-label="Live updates"><button type="button" class="button small" id="live-toggle" aria-pressed="true">Live: On</button><button type="button" class="button small" id="live-refresh">Refresh now</button><span id="live-status" class="sr-only" role="status"></span></div>{% endif %}
+{% if csrf %}<div class="account-dropdown"><button type="button" class="button small" id="account-toggle" aria-expanded="false" aria-controls="account-menu"><svg class="account-avatar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20v-2a6.5 6.5 0 0 1 13 0v2"/></svg><span>{{auth_username}}</span><svg class="account-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div id="account-menu" hidden><form action="/logout" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H4v14h4M8 10h9m-3-3 3 3-3 3"/></svg><span>Sign out</span></button></form></div></div>{% else %}<a class="button small" href="/login">Sign in</a>{% endif %}
+</div>
+</header>
+<div class="content">
+<div id="view-content" data-live-view="{{'true' if live_enabled else 'false'}}">{% block content %}{% endblock %}</div>
+</div>
+</main>
+<div id="toast" role="status">
+</div>
+</body>
+</html>

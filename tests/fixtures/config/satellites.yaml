@@ -1,0 +1,42 @@
+- id: EMEA-SAT-1
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: EMEA
+- id: EMEA-SAT-2
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: EMEA
+- id: APAC-SAT-1
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: APAC
+- id: APAC-SAT-2
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: APAC
+- id: AMER-SAT-1
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: AMER
+- id: AMER-SAT-2
+  scopes:
+  - NetBackup
+  - DataDomain
+  - TapeLibrary
+  concurrency: 2
+  zone: AMER

@@ -1,0 +1,120 @@
+- id: nbu-emea-01
+  scope: NetBackup
+  enabled: true
+  preferred_worker: EMEA-SAT-1
+  fallback_worker: EMEA-SAT-2
+  parameters:
+    mode: DEMO
+  zone: EMEA
+- id: nbu-emea-02
+  scope: NetBackup
+  enabled: true
+  preferred_worker: EMEA-SAT-2
+  fallback_worker: EMEA-SAT-1
+  parameters:
+    mode: DEMO
+  zone: EMEA
+- id: nbu-emea-03
+  scope: NetBackup
+  enabled: true
+  preferred_worker: EMEA-SAT-1
+  fallback_worker: EMEA-SAT-2
+  parameters:
+    mode: DEMO
+  zone: EMEA
+- id: nbu-emea-04
+  scope: NetBackup
+  enabled: true
+  preferred_worker: EMEA-SAT-2
+  fallback_worker: EMEA-SAT-1
+  parameters:
+    mode: DEMO
+  zone: EMEA
+- id: nbu-apac-01
+  scope: NetBackup
+  enabled: true
+  preferred_worker: APAC-SAT-1
+  fallback_worker: APAC-SAT-2
+  parameters:
+    mode: DEMO
+  zone: APAC
+- id: nbu-apac-02
+  scope: NetBackup
+  enabled: true
+  preferred_worker: APAC-SAT-2
+  fallback_worker: APAC-SAT-1
+  parameters:
+    mode: DEMO
+  zone: APAC
+- id: nbu-apac-03
+  scope: NetBackup
+  enabled: true
+  preferred_worker: APAC-SAT-1
+  fallback_worker: APAC-SAT-2
+  parameters:
+    mode: DEMO
+  zone: APAC
+- id: nbu-apac-04
+  scope: NetBackup
+  enabled: true
+  preferred_worker: APAC-SAT-2
+  fallback_worker: APAC-SAT-1
+  parameters:
+    mode: DEMO
+  zone: APAC
+- id: nbu-amer-01
+  scope: NetBackup
+  enabled: true
+  preferred_worker: AMER-SAT-1
+  fallback_worker: AMER-SAT-2
+  parameters:
+    mode: DEMO
+  zone: AMER
+- id: nbu-amer-02
+  scope: NetBackup
+  enabled: true
+  preferred_worker: AMER-SAT-2
+  fallback_worker: AMER-SAT-1
+  parameters:
+    mode: DEMO
+  zone: AMER
+- id: nbu-amer-03
+  scope: NetBackup
+  enabled: true
+  preferred_worker: AMER-SAT-1
+  fallback_worker: AMER-SAT-2
+  parameters:
+    mode: DEMO
+  zone: AMER
+- id: nbu-amer-04
+  scope: NetBackup
+  enabled: true
+  preferred_worker: AMER-SAT-2
+  fallback_worker: AMER-SAT-1
+  parameters:
+    mode: DEMO
+  zone: AMER
+- id: dd-emea-01
+  zone: EMEA
+  scope: DataDomain
+  enabled: true
+  preferred_worker: EMEA-SAT-1
+  fallback_worker: EMEA-SAT-2
+  parameters:
+    mode: DEMO
+- id: dd-apac-01
+  zone: APAC
+  scope: DataDomain
+  enabled: true
+  preferred_worker: APAC-SAT-1
+  fallback_worker: APAC-SAT-2
+  parameters:
+    mode: DEMO
+- id: dd-amer-01
+  zone: AMER
+  scope: DataDomain
+  enabled: true
+  preferred_worker: AMER-SAT-1
+  fallback_worker: AMER-SAT-2
+  parameters:
+    mode: DEMO

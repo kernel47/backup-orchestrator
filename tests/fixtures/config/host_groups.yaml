@@ -1,0 +1,57 @@
+- id: demo_netbackup_emea
+  name: Demo · NetBackup · EMEA
+  description: Demo NetBackup targets in EMEA. No schedule is created automatically.
+  host_ids:
+  - nbu-emea-01
+  - nbu-emea-02
+  - nbu-emea-03
+  - nbu-emea-04
+- id: demo_netbackup_apac
+  name: Demo · NetBackup · APAC
+  description: Demo NetBackup targets in APAC. No schedule is created automatically.
+  host_ids:
+  - nbu-apac-01
+  - nbu-apac-02
+  - nbu-apac-03
+  - nbu-apac-04
+- id: demo_netbackup_amer
+  name: Demo · NetBackup · AMER
+  description: Demo NetBackup targets in AMER. No schedule is created automatically.
+  host_ids:
+  - nbu-amer-01
+  - nbu-amer-02
+  - nbu-amer-03
+  - nbu-amer-04
+- id: demo_netbackup_all
+  name: Demo · NetBackup · All zones
+  description: Cross-zone group for testing satellite placement.
+  host_ids:
+  - nbu-emea-01
+  - nbu-emea-02
+  - nbu-emea-03
+  - nbu-emea-04
+  - nbu-apac-01
+  - nbu-apac-02
+  - nbu-apac-03
+  - nbu-apac-04
+  - nbu-amer-01
+  - nbu-amer-02
+  - nbu-amer-03
+  - nbu-amer-04
+- id: demo_datadomain_all
+  name: Demo · DataDomain · All zones
+  description: Capacity collector targets across zones.
+  host_ids:
+  - dd-emea-01
+  - dd-apac-01
+  - dd-amer-01
+- id: demo_emea_mixed
+  name: Demo · EMEA · Mixed scopes
+  description: Use to verify that the target preview skips hosts outside the collector
+    scope.
+  host_ids:
+  - nbu-emea-01
+  - nbu-emea-02
+  - nbu-emea-03
+  - nbu-emea-04
+  - dd-emea-01

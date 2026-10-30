@@ -1,0 +1,6 @@
+{% if period!='day' %}<section class="panel settings-intro">
+<div class="daily-health-titlebar"><h2>{{period|title}} overview</h2>{% include '_health_date_navigation.html' %}</div>
+<p>Select a day to see its collections and execution details.</p>
+<div class="period-grid">{% for day in days %}{% set d=daily[day] %}<a class="period-day {{'contains-failures' if d.FAILED+d.TIMEOUT>0}}" href="{{request.url.remove_query_params(['start','end']).include_query_params(date=day,period='day',view='runs',page=1)}}">
+<strong>{{day}}</strong>{% if d.SUCCESS %}<span class="green">{{d.SUCCESS}} successful</span>{% endif %}{% if d.FAILED+d.TIMEOUT>0 %}<span class="overview-failure">{{d.FAILED+d.TIMEOUT}} failed</span>{% endif %}{% if d.MISSING or d.RUNNING or d.PENDING %}<small>{% if d.MISSING %}{{d.MISSING}} missing {% endif %}{% if d.RUNNING+d.PENDING %}· {{d.RUNNING+d.PENDING}} active{% endif %}</small>{% elif not d.SUCCESS and not d.FAILED and not d.TIMEOUT %}<small>{{d.SCHEDULED|string + ' planned' if d.SCHEDULED else 'No runs'}}</small>{% endif %}</a>{% endfor %}</div>
+</section>{% endif %}

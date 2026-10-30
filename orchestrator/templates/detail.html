@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% from '_pagination.html' import pagination with context %}{% block title %}{{run.collector}} · {{run.host}}{% endblock %}{% block content %}<a class="subtle-link" href="/?view=runs&collector_id={{run.collector_id}}&date={{run.period_start[:10]}}">← {{run.collector}} history</a>
+<div class="page-heading">
+<div>
+<div class="eyebrow">COLLECTION / {{run.id[:8]}}</div>
+<h1>{{run.collector}} <span class="muted-title">/ {{run.host}}</span>
+</h1>
+<p>{{run.zone}} · {{run.scope}} · {{run.period_start}} → {{run.period_end}}</p>
+</div>
+<span class="badge {{run.status}}">
+<i>
+</i>{{run.status}}</span>
+</div>
+{% if run.scheduled_local %}<div class="panel settings-intro execution-clock"><strong>Scheduled execution: {{run.scheduled_local}}</strong><p>{{run.execution_timezone}} · {{run.scheduled_utc}} UTC</p>{% if run.started_local %}<p>Actual start: {{run.started_local}} · {{run.actual_timezone}}</p>{% endif %}</div>{% endif %}
+<div class="table-toolbar">
+<span>{{run.attempts|length}} attempt(s) for this collection period</span>{% if run.status in ['FAILED','TIMEOUT','MISSING','UNKNOWN'] %}<button class="button primary" data-retry-one="{{run.id}}">↻ Retry collection</button>{% elif run.status=='SUCCESS' %}<button class="button" data-rerun-one="{{run.id}}">Run again</button>{% endif %}</div>
+<details class="panel settings-intro">
+<summary>Execution settings</summary>
+<p>Script and settings used for this collection.</p>
+<pre>{{run.snapshot|tojson(indent=2)}}</pre>
+</details>{% for a in attempts %}<section class="panel attempt">
+<div class="panel-heading">
+<div>
+<h2>Attempt #{{a.number}} <span class="badge {{a.status}}">
+<i>
+</i>{{a.status}}</span>
+</h2>
+<p>{{a.worker_id}} · {{a.id}}</p>{% if a.context.get("worker_timezone") %}<p>Started {{local_label(a.started_at,a.context.worker_timezone)}} · {{a.context.worker_timezone}}</p>{% endif %}
+</div>
+<span>{{'%.2f'|format(a.finished_at-a.started_at) if a.finished_at else '…'}} s</span>
+</div>{% if a.result %}<h3>{{a.result.summary}}</h3>
+<p><span class="badge {{'SUCCESS' if a.result.status=='SUCCESS' else 'FAILED' if a.result.status in ['FAILURE','TIMEOUT'] else 'MISSING'}}">{{a.result.status}}</span> · Reported at {{a.result.collected_at}}</p>
+<p>Attempt {{a.result.get('attempt_number',a.number)}} · Started {{a.result.get('started_at','—')}} · Finished {{a.result.get('finished_at','—')}}</p>
+<p>{{a.result.get('records_collected',0)}} collected · {{a.result.get('records_sent',0)}} sent{% if a.result.get('duration_seconds') is not none %} · {{a.result.duration_seconds}} s{% endif %}</p>
+{% if a.result.get('error') %}<p class="red">{{a.result.error}}</p>{% endif %}
+{% if a.result.get('details') %}<details><summary>Report details</summary><pre>{{a.result.details|tojson(indent=2)}}</pre></details>{% endif %}
+<details>
+<summary>Full execution report</summary>
+<pre>{{a.result|tojson(indent=2)}}</pre>
+</details>{% endif %}<details>
+<summary>Attempt parameters</summary>
+<pre>{{a.context|tojson(indent=2)}}</pre>
+</details>
+<details {{'open' if loop.first and a.status in ['FAILED','TIMEOUT','WORKER_OFFLINE'] and run.status not in ['RUNNING','PENDING']}}>
+<summary>Script logs · latest lines</summary>
+<pre class="logs">{{a.logs or 'No logs recorded.'}}</pre>
+</details>
+</section>{% else %}<div class="empty-state panel">This window has no attempts yet.</div>{% endfor %}{{pagination(run.attempts|length,page,pages,25,"attempts",false)}}{% endblock %}

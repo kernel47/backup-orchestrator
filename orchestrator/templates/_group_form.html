@@ -1,0 +1,26 @@
+<form class="host-group-form" data-group="{{group.id if group else ''}}">
+<div class="settings-fields">
+<label>Name<input name="name" value="{{group.name if group else ''}}" placeholder="EMEA production" maxlength="80" required>
+</label>
+<label>State<select name="enabled">
+<option value="true" {{'selected' if not group or group.enabled}}>Enabled</option>
+<option value="false" {{'selected' if group and not group.enabled}}>Disabled</option>
+</select>
+</label>
+<label>Description<input name="description" value="{{group.description if group else ''}}" maxlength="500" placeholder="Optional description">
+</label>
+</div>
+<label>Find members<input type="search" class="member-search" placeholder="Filter by host, scope or zone">
+</label>
+<div class="host-members">{% for host in hosts if not host.deleted %}<label class="host-member">
+<input type="checkbox" name="host_ids" value="{{host.id}}" {{'checked' if group and host.id in group.host_ids}}>
+<span>
+<strong>{{host.id}}</strong>
+<small>{{host.scope}} · {{host.zone}} · {{'Enabled' if host.enabled else 'Disabled'}}</small>
+</span>
+</label>{% endfor %}</div>
+<div class="form-actions">
+<span class="hint member-count">{{group.host_ids|length if group else 0}} selected</span>
+<button class="button primary">{{'Save group' if group else 'Create group'}}</button>
+</div>
+</form>

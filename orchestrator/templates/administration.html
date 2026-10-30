@@ -1,0 +1,153 @@
+{% extends 'base.html' %}{% from '_pagination.html' import pagination with context %}{% block content %}
+<div class="page-heading">
+<div>
+<div class="eyebrow">{{'INVENTORY' if view=='sources' else 'CONFIGURATION'}}</div>
+<h1>{{'Zones' if view=='zones' else 'Inventory sources & discovery' if view=='sources' else 'Satellites'}}</h1>
+<p>{{'Group hosts and satellites by location or network. Disable a zone to stop new work.' if view=='zones' else 'Fetch inventory, review new or changed hosts, then apply the changes. Activate new hosts separately.' if view=='sources' else 'Monitor availability and capacity. Register a satellite before installing its worker.'}}</p>
+</div>
+</div>
+{% if view=='zones' %}
+<form class="panel collector-settings" id="zone-form">
+<h2>Create zone</h2>
+<div class="settings-fields">
+<label>ID<input name="id" placeholder="EMEA" pattern="[A-Za-z0-9_-]{1,64}" required>
+</label>
+<label>Name<input name="name" placeholder="EMEA" required>
+</label>
+</div>
+<button class="button primary">Create zone</button>
+</form>
+{% for zone in catalog.zones %}<form class="panel collector-settings zone-edit">
+<input type="hidden" name="id" value="{{zone.id}}">
+<h2>{{zone.id}}</h2>
+<div class="settings-fields">
+<label>Name<input name="name" value="{{zone.name}}" required>
+</label>
+<label>State<select name="enabled">
+<option value="true" {{'selected' if zone.enabled}}>Enabled</option>
+<option value="false" {{'selected' if not zone.enabled}}>Disabled</option>
+</select>
+</label>
+</div>
+<div class="form-actions">
+<button type="button" class="button" data-delete-zone="{{zone.id}}">Delete unused zone</button>
+<button class="button primary">Save zone</button>
+</div>
+</form>{% else %}<div class="panel empty-state">No zones yet. Create your first zone above.</div>{% endfor %}
+{% elif view=='workers' %}
+<div class="collector-grid workers-grid">{% for worker in workers %}<article class="collector-card">
+<h2>{{worker.id}}</h2>
+<p>
+<span class="badge {{'SUCCESS' if worker.online else 'FAILED'}}">{{'Online' if worker.online else 'Offline'}}</span>
+</p>
+<p>{{worker.zone}} · {{worker.scopes|join(', ')}}</p>
+<div class="worker-clock"><strong data-satellite-clock="{{worker.id}}" data-local-clock="{{worker.timezone}}" data-clock-epoch="{{worker.clock_epoch}}">{{worker.local_time}}</strong><small>{{worker.timezone or 'Start this worker to report its timezone'}}</small><p><span data-worker-next="{{worker.id}}">{{'Next execution: '+worker.next_run.next_execution_local if worker.next_run else 'No scheduled targets assigned'}}</span><small data-worker-next-detail="{{worker.id}}">{% if worker.next_run %}{{worker.next_run.schedule}} · {{worker.next_run.next_execution}} UTC{% endif %}</small></p></div>
+<p>{{worker.active}} / {{worker.concurrency}} active · Last seen: {{(worker.last_seen_seconds|string + 's ago') if worker.last_seen_seconds is not none else 'not connected yet'}}</p>
+<details>
+<summary>Authorization & capacity</summary>
+<form class="worker-policy" data-worker="{{worker.id}}">
+<input name="id" type="hidden" value="{{worker.id}}">
+<input type="hidden" name="zone" value="{{active_zone}}"><p>Zone: <strong>{{active_zone}}</strong></p>
+<label>Scopes<input name="scopes" value="{{worker.scopes|join(', ')}}" required>
+</label>
+<label>Capacity<input name="concurrency" type="number" min="1" max="32" value="{{worker.concurrency}}">
+</label>
+<button class="button small">Save policy</button>
+</form>
+</details>
+<button class="button small" data-rotate-worker="{{worker.id}}">Rotate token</button>
+</article>{% endfor %}</div>
+<form class="panel collector-settings" id="satellite-form">
+<h2>Provision satellite</h2>
+<p>Every satellite belongs to one zone. Scopes and capacity define what it can execute. Its unique token is shown only once.</p>
+<div class="settings-fields">
+<label>ID<input name="id" placeholder="EMEA-SAT-3" required>
+</label>
+<input type="hidden" name="zone" value="{{active_zone}}"><p>Zone: <strong>{{active_zone}}</strong></p>
+<label>Scopes (comma separated)<input name="scopes" placeholder="NetBackup, DataDomain" required>
+</label>
+<label>Concurrency<input name="concurrency" type="number" value="2" min="1" max="32">
+</label>
+</div>
+<button class="button primary">Provision & show token</button>
+<pre id="satellite-token" hidden>
+</pre>
+</form>
+{% else %}
+<section class="panel settings-intro">
+<h2>How discovery works</h2>
+<p>Connect a source, review its changes, then apply the preview. New hosts stay inactive until you activate them.</p>
+<details>
+<summary>Inventory file format</summary>
+<p>Use a JSON or YAML file with this structure. You can also push it to <code>POST /api/inventory/discover</code>.</p>
+<pre>{"version":1,"hosts":[{"id":"example-host","zone":"EMEA","scope":"General","parameters":{}}]}</pre>
+<p>Configure zones first. New hosts are imported as Discovered / disabled. Missing hosts remain visible and are never removed automatically. Use <code>scripts/sync_inventory.py</code> to refresh the file from your API and trigger discovery.</p>
+</details>
+</section>
+<form class="panel collector-settings" id="source-form">
+<h2>Add inventory source</h2>
+<div class="settings-fields">
+<label>Name<input name="name" placeholder="CMDB export" required>
+</label>
+<input type="hidden" name="kind" value="file">
+</div>
+<label>Inventory file<input name="path" value="inventory/hosts.json" required>
+</label>
+<p class="hint">Path on the master. Edit the file manually or regenerate it with python -m scripts.sync_inventory --refresh. Discover changes before applying them.</p>
+<button class="button primary">Create source</button>
+</form>
+{% for source in sources %}<section class="panel settings-intro">
+<h2>{{source.name}} <span class="quiet-chip">{{source.kind}}</span>
+</h2>
+<pre>{{source.config|tojson(indent=2)}}</pre>
+<details>
+<summary>Edit source</summary>
+<form class="source-edit" data-source="{{source.id}}">
+<div class="settings-fields">
+<label>Name<input name="name" value="{{source.name}}" required>
+</label>
+<input type="hidden" name="kind" value="file">
+<label>State<select name="enabled">
+<option value="true" {{'selected' if source.enabled}}>Enabled</option>
+<option value="false" {{'selected' if not source.enabled}}>Paused</option>
+</select>
+</label>
+</div>
+<label>Inventory file<input name="path" value="{{source.config.get('path','inventory/hosts.json')}}" required>
+</label>
+<button class="button">Save source</button>
+</form>
+</details>
+<button class="button primary" data-discover="{{source.id}}" {{'disabled' if not source.enabled}}>Discover changes</button>
+</section>{% endfor %}
+<section class="section-heading">
+<h2>Discovery history</h2>
+</section>
+<div class="target-list">{% for item in sync_history %}<a class="button small" href="{{request.url.include_query_params(sync_id=item.id,page=1)}}">{{item.id[:8]}} · {{item.status}}</a>{% endfor %}</div>{% for sync in syncs %}<section class="panel settings-intro">
+<div class="group-heading">
+<h2>Discovery {{sync.id[:8]}} <span class="quiet-chip">{{sync.status}}</span>
+</h2>{% if sync.status=='PREVIEW' %}<button class="button primary" data-apply-sync="{{sync.id}}">Apply preview</button>{% endif %}</div>
+<p>Source: {{sync.source_id}} · {{changes_total}} hosts in preview. New hosts require activation after applying. Missing hosts and the history of deleted hosts are preserved.</p>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Change</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>{% for change in sync.changes %}<tr>
+<td>{{change.id}}</td>
+<td>{{'deleted' if change.state=='archived' else change.state}}</td>
+<td>
+<details>
+<summary>{{change.fields|length}} field(s)</summary>
+<pre>{{change.fields|tojson(indent=2)}}</pre>
+</details>
+</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>{{pagination(changes_total,page,pages,page_size,"changes")}}</section>{% else %}<div class="panel empty-state">No discoveries yet. Add a source or push an inventory payload to the API.</div>{% endfor %}
+{% endif %}
+{% endblock %}

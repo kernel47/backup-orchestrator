@@ -1,0 +1,7 @@
+{% if period!='day' %}
+<div class="health-date-navigation" role="group" aria-label="Collection period navigation">
+<a href="{{request.url.remove_query_params(['start','end']).include_query_params(date=previous_date,page=1)}}" aria-label="Previous period" title="Previous period"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 4-4 4 4 4"/></svg><span>Previous</span></a>
+<span class="health-date-label">{{range_start}}{% if period!='day' %} — {{range_end}}{% endif %}</span>
+<a href="{{request.url.remove_query_params(['start','end']).include_query_params(date=following_date,page=1)}}" aria-label="Next period" title="Next period"><span>Next</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></a>
+</div>
+{% endif %}

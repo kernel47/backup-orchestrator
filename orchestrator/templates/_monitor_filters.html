@@ -1,0 +1,19 @@
+<form class="filters compact-filters" method="get">
+<input type="hidden" name="view" value="{{view}}"><input type="hidden" name="zone" value="{{filters.get('zone','')}}">
+{% if view=='collectors' %}<input type="hidden" name="scope" value="{{filters.get('scope','')}}">{% if filters.get('collector_id') %}<input type="hidden" name="collector_id" value="{{filters.collector_id}}">{% endif %}{% endif %}
+{% if filters.get('status') %}<input type="hidden" name="status" value="{{filters.status}}">{% endif %}
+<div class="basic-filters">
+<label>View<select name="period">{% for value,label in [('day','Day'),('week','Week'),('month','Month')] %}<option value="{{value}}" {{'selected' if period==value}}>{{label}}</option>{% endfor %}</select></label>
+<label>Collection date<input type="date" name="date" value="{{filters.date}}"></label>
+{% if view=='runs' %}<label>Scope<select name="scope"><option value="">All scopes</option>{% for scope in catalog.scopes %}<option {{'selected' if filters.get('scope')==scope}}>{{scope}}</option>{% endfor %}</select></label><label>Collector<select name="collector_id"><option value="">All collectors</option>{% for c in collectors %}<option value="{{c.id}}" {{'selected' if filters.get('collector_id')==c.id}}>{{c.name}}</option>{% endfor %}</select></label>{% endif %}
+<button class="button filter-apply">Apply filters</button>
+</div>
+{% set advanced_active=filters.get('host') or filters.get('host_group_id') or filters.get('schedule_id') or filters.get('worker') or selected_hour is not none %}
+<details class="advanced-filters" {{'open' if advanced_active}}><summary><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4h12M4 8h8M6 12h4"/></svg>Advanced filters{% if advanced_active %}<span class="filter-active">Active</span>{% endif %}</summary>
+<div class="advanced-fields">{% if view=='runs' and period=='day' %}<label>Hour (UTC)<select name="hour"><option value="">All hours</option>{% for hour in range(24) %}<option value="{{hour}}" {{'selected' if selected_hour==hour}}>{{'%02d'|format(hour)}}:00–{{'%02d'|format(hour+1)}}:00</option>{% endfor %}</select></label>{% endif %}<label>Host group<select name="host_group_id"><option value="">All host groups</option>{% for group in host_groups %}<option value="{{group.id}}" {{'selected' if filters.get('host_group_id')==group.id}}>{{group.name}}</option>{% endfor %}</select></label>
+<label>Host<input name="host" placeholder="All hosts" value="{{filters.get('host','')}}" list="hosts"><datalist id="hosts">{% for h in hosts %}<option value="{{h.id}}">{% endfor %}</datalist></label>
+{% if filters.get('schedule_id') %}<input type="hidden" name="schedule_id" value="{{filters.schedule_id}}">{% endif %}
+{% if filters.get('worker') %}<input type="hidden" name="worker" value="{{filters.worker}}">{% endif %}
+<a class="subtle-link" href="{{request.url.remove_query_params(['host','host_group_id','schedule_id','worker','start','end','hour']).include_query_params(page=1)}}">Clear advanced filters</a>
+</div></details>
+</form>

@@ -1,0 +1,36 @@
+{% for rule in schedules if rule.id==request.query_params.get('schedule_id') %}<form class="panel collector-settings schedule-edit" data-schedule="{{rule.id}}">
+<div class="group-heading">
+<div>
+<h2>{{rule.name}}</h2>
+<p>{% for collector in collectors if collector.id==rule.collector_id %}{{collector.scope}} / {{collector.name}}{% endfor %} → {% for group in groups if group.id in (rule.host_group_ids or [rule.host_group_id]) %}{{group.name}} {% endfor %}</p>
+</div>
+<a class="subtle-link" href="/?view=runs&collector_id={{rule.collector_id}}&schedule_id={{rule.id}}">Collection history ↗</a>
+</div>
+<input type="hidden" name="collector_id" value="{{rule.collector_id}}">
+<input type="hidden" name="host_group_id" value="{{rule.host_group_id}}">
+<label>Schedule name<input name="name" value="{{rule.name}}" maxlength="80" required></label>
+<div class="settings-fields">
+<label>Timing<select name="kind"><option value="interval" {{'selected' if rule.kind=='interval'}}>Repeat at an interval</option><option value="daily_local" {{'selected' if rule.kind=='daily_local'}}>Daily at worker local time</option></select></label>
+<label data-local-time-field {{'hidden' if rule.kind!='daily_local'}}>Worker local time<input type="time" name="local_time" value="{{rule.local_time}}" step="60"></label>
+<label data-interval-field {{'hidden' if rule.kind=='daily_local'}}>Interval<select name="interval_seconds">{% if rule.interval_seconds not in cadences|map(attribute=0)|list %}<option value="{{rule.interval_seconds}}" selected>{{cadence_label(rule.interval_seconds)}} (existing)</option>{% endif %}{% for seconds,label in cadences %}<option value="{{seconds}}" {{'selected' if seconds==rule.interval_seconds}}>{{label}}</option>{% endfor %}</select>
+</label>
+<label>State<select name="enabled">
+<option value="true" {{'selected' if rule.enabled}}>Enabled</option>
+<option value="false" {{'selected' if not rule.enabled}}>Paused</option>
+</select>
+</label>
+</div>
+<div class="schedule-timing"><p class="hint">{{'Every day at '+rule.local_time+' on each target satellite’s local clock.' if rule.kind=='daily_local' else cadence_label(rule.interval_seconds)+' · elapsed time, independent of the master clock.'}}</p>{% if rule.enabled %}{% for item in rule.timing %}<div class="timing-row"><strong>{{item.worker_id}}</strong><span>{{item.timezone}}</span><span>Next: {{item.next_execution_local}}</span><small>{{item.next_execution}} UTC</small></div>{% else %}<p class="hint">Waiting for active targets and satellite timezones.</p>{% endfor %}{% else %}<p class="hint">Paused · no automatic execution</p>{% endif %}</div>
+<fieldset class="target-fieldset">
+<legend>Host groups</legend>
+<div class="target-list">{% for group in groups %}<label class="target-choice">
+<input type="checkbox" name="target_groups" value="{{group.id}}" {{'checked' if group.id in (rule.host_group_ids or [rule.host_group_id])}}>{{group.name}}{{' (disabled)' if not group.enabled}}</label>{% endfor %}</div>
+</fieldset>
+<input type="checkbox" name="target_zones" value="{{active_zone}}" checked hidden>
+<label>Parameter overrides (JSON)<textarea name="parameters" rows="3">{{rule.parameters|tojson(indent=2)}}</textarea>
+</label>
+<div class="form-actions">
+<span class="hint">Pausing keeps historical runs and does not cancel tasks already queued.</span>
+<button class="button primary">Save schedule</button>
+</div>
+</form>{% endfor %}

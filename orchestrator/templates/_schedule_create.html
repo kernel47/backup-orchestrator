@@ -1,0 +1,34 @@
+<section class="panel settings-intro schedule-create">
+<h2>Targets and timing</h2>
+<p>Preview the hosts below before starting. Run now collects the latest completed period; an existing run for that period is reused.</p>
+<form id="group-launch">
+<div class="settings-fields">
+<label>Collector<select name="collector_id" required>
+<option value="">Choose collector</option>{% for scope,items in collectors|groupby('scope') %}<optgroup label="{{scope}}">{% for collector in items %}<option value="{{collector.id}}" {{'selected' if request.query_params.get('collector_id')==collector.id}}>{{scope}} / {{collector.name}}</option>{% endfor %}</optgroup>{% endfor %}</select>
+</label>
+<label>Schedule name<input name="name" placeholder="Production jobs" maxlength="80">
+</label>
+<label>Timing<select name="kind"><option value="interval">Repeat at an interval</option><option value="daily_local">Daily at worker local time</option></select></label>
+<label data-local-time-field hidden>Worker local time<input type="time" name="local_time" value="07:00" step="60"></label>
+<label data-interval-field>Interval<select name="interval_seconds">{% for seconds,label in cadences %}<option value="{{seconds}}" {{'selected' if seconds==3600}}>{{label}}</option>{% endfor %}</select>
+</label>
+</div>
+<fieldset class="target-fieldset">
+<legend>Host groups (select one or more)</legend>
+<div class="target-list">{% for group in groups if group.enabled %}<label class="target-choice">
+<input type="checkbox" name="target_groups" value="{{group.id}}" {{'checked' if request.query_params.get('group_id')==group.id}}>{{group.name}}</label>{% endfor %}</div>
+</fieldset>
+<input type="checkbox" name="target_zones" value="{{active_zone}}" checked hidden>
+<label>Parameter overrides (JSON)<textarea name="parameters" rows="3">{}</textarea>
+</label>
+<div class="target-preview" id="target-preview" aria-live="polite">Choose a collector and group to preview targets.</div>
+<div class="form-actions">
+<p class="hint">Times follow the satellite’s local clock, including daylight saving changes. Each host can have one active schedule per collector.</p>
+<div class="group-actions">
+<button type="button" class="button" id="group-run" disabled>▶ Run now</button>
+<button type="submit" class="button primary" id="group-schedule" disabled>＋ Create schedule</button>
+</div>
+</div>
+</form>{% if not groups %}<p>
+<a class="subtle-link" href="/?view=groups">Create a host group first ↗</a>
+</p>{% endif %}</section>

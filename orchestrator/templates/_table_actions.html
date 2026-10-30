@@ -1,0 +1,16 @@
+{% macro icon(kind) -%}
+<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{% if kind=='edit' %}<path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/>
+{% elif kind=='delete' %}<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>
+{% elif kind=='activate' %}<path d="m9 5 10 7-10 7z"/>
+{% elif kind=='pause' %}<path d="M8 5v14M16 5v14"/>
+{% elif kind=='restore' %}<path d="M3 5v6h6M3.5 11a8.5 8.5 0 1 1 2 7M12 7v5l3 2"/>
+{% else %}<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>{% endif %}
+</svg>
+{%- endmacro %}
+{% macro action_link(href,label,kind='view') -%}
+<a class="table-action table-action-{{kind}}" href="{{href}}" aria-label="{{label}}" title="{{label}}">{{icon(kind)}}</a>
+{%- endmacro %}
+{% macro action_button(label,kind,attributes) -%}
+<button type="button" class="table-action table-action-{{kind}}" aria-label="{{label}}" title="{{label}}" {% for name,value in attributes.items() %}{{name}}="{{value}}" {% endfor %}>{{icon(kind)}}</button>
+{%- endmacro %}

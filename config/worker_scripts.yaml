@@ -1,0 +1,16 @@
+fake: collectors/fake.py
+
+# Install backup-collector in the worker environment (or use its absolute path).
+backup_collector:
+  command: [backup-collector, collect]
+  report_format: backup_collector
+  context_args:
+    asset: host
+    start-date: period_start
+    end-date: period_end
+  parameter_args:
+    scope: scope
+    type: type
+    dry-run: dry_run
+    debug: debug
+  required_parameters: [scope, type]

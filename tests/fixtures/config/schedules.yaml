@@ -1,0 +1,63 @@
+- id: demo_netbackup_jobs
+  name: NetBackup Jobs
+  collector_id: netbackup_jobs
+  host_group_ids:
+  - demo_netbackup_emea
+  - demo_netbackup_apac
+  - demo_netbackup_amer
+  zones: []
+  kind: interval
+  interval_seconds: 600
+  local_time: 07:00
+  enabled: true
+  parameters: {}
+- id: demo_netbackup_policies
+  name: NetBackup Policies
+  collector_id: netbackup_policies
+  host_group_ids:
+  - demo_netbackup_emea
+  - demo_netbackup_apac
+  - demo_netbackup_amer
+  zones: []
+  kind: interval
+  interval_seconds: 86400
+  local_time: 07:00
+  enabled: true
+  parameters: {}
+- id: demo_netbackup_images
+  name: NetBackup Images
+  collector_id: netbackup_images
+  host_group_ids:
+  - demo_netbackup_emea
+  - demo_netbackup_apac
+  - demo_netbackup_amer
+  zones: []
+  kind: interval
+  interval_seconds: 86400
+  local_time: 07:00
+  enabled: true
+  parameters: {}
+- id: demo_netbackup_slp
+  name: NetBackup SLP
+  collector_id: netbackup_slp
+  host_group_ids:
+  - demo_netbackup_emea
+  - demo_netbackup_apac
+  - demo_netbackup_amer
+  zones: []
+  kind: interval
+  interval_seconds: 86400
+  local_time: 07:00
+  enabled: true
+  parameters: {}
+- id: demo_datadomain_capacity
+  name: DataDomain Capacity
+  collector_id: datadomain_capacity
+  host_group_ids:
+  - demo_datadomain_all
+  zones: []
+  kind: interval
+  interval_seconds: 3600
+  local_time: 07:00
+  enabled: true
+  parameters: {}

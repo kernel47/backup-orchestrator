@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% from '_table_actions.html' import action_link,action_button %}
+{% from '_pagination.html' import pagination with context %}
+{% macro badge(status) %}<span class="badge {{status}}">
+<i>
+</i>{{status}}</span>{% endmacro %}
+{% block content %}{% if not catalog.zones %}<section class="panel settings-intro">
+<h2>Set up your master</h2>
+<p>Start with <a class="subtle-link" href="/?view=zones">zones</a>, provision <a class="subtle-link" href="/?view=workers">satellites</a>, then configure an <a class="subtle-link" href="/?view=sources">inventory source</a>. Review and activate discovered hosts before creating groups and collectors.</p>
+</section>{% endif %}
+<div class="page-heading">
+<div>
+<div class="eyebrow">COLLECTOR OPERATIONS</div>
+<h1>{% if overview %}Overview{% elif view=='workers' %}Satellites{% elif view=='settings' %}{{'Collector configuration' if section=='collectors' else 'Inventory configuration'}}{% elif view=='runs' %}Runs & history{% elif filters.get('collector_id') %}{% for c in collectors if c.id==filters.collector_id %}{{c.name}} <span class="muted-title">/ {{c.scope}}</span>{% endfor %}{% else %}Collectors{% endif %}</h1>
+<p>{% if overview %}Track results across zones and host groups. Filter a period to investigate failures.{% elif view=='settings' %}{{'Choose scripts and execution defaults. Set targets and frequency in Schedules.' if section=='collectors' else 'Connect inventory sources, review discoveries and manage your hosts.'}}{% elif view=='runs' %}Inspect collection results, open execution details or retry a failed collection.{% elif filters.get('collector_id') %}Filter hosts and dates to inspect results and retry missing or failed collections.{% else %}Daily health of your collectors in this workspace. Select a day to investigate in History.{% endif %}</p>
+</div></div>
+{% if scope_tabs %}{% include '_scope_tabs.html' %}{% endif %}
+{% if view not in ['workers','settings'] %}
+{% include '_monitor_filters.html' %}
+{% if view=='runs' %}{% include '_period_overview.html' %}{% endif %}
+{% if view=='collectors' %}<div class="metrics" aria-label="Collection summary">
+<div class="metric">
+<span>EXPECTED COLLECTIONS</span>
+<strong>{{expected}}</strong>
+<small>Collections due so far</small>
+</div>
+<div class="metric">
+<span>SUCCESSFUL</span>
+<strong class="green">{{counts.SUCCESS}}</strong>
+<small>{{success_rate}} % success rate</small>
+</div>
+<div class="metric">
+<span>FAILED</span>
+<strong class="{{'red' if counts.FAILED+counts.TIMEOUT>0}}">{{counts.FAILED+counts.TIMEOUT}}</strong>
+<small>{{counts.MISSING}} missing · {{counts.UNKNOWN}} unknown</small>
+</div>
+<div class="metric">
+<span>RUNNING / PENDING</span>
+<strong class="blue {{'activity-indicator' if counts.RUNNING+counts.PENDING}}">{{counts.RUNNING+counts.PENDING}}</strong>
+<small>{{counts.SCHEDULED}} planned collections</small>
+</div>
+</div>
+{% endif %}{% endif %}
+{% if view=='collectors' and not filters.get('collector_id') %}{% include '_period_overview.html' %}{% include '_collector_catalog.html' %}{% endif %}
+{% if view=='runs' %}
+{% if filters.get('collector_id') %}<div class="history-context"><strong>{% for c in collectors if c.id==filters.collector_id %}{{c.name}}{% endfor %}</strong><span>{{filters.date}}{% if selected_hour is not none %} · {{'%02d'|format(selected_hour)}}:00–{{'%02d'|format(selected_hour+1)}}:00 UTC{% endif %}</span><a class="subtle-link" href="/?view=collectors&scope={{filters.get('scope','')}}">Back to collectors</a><a class="subtle-link" href="{{request.url.remove_query_params(['collector_id','host','host_group_id','schedule_id','worker','status','start','end','hour']).include_query_params(page=1)}}">Reset filters</a></div>{% endif %}
+<p class="hint">Retry failed, unknown or missing periods. Run again re-executes successful periods; all previous attempts are preserved.</p>
+<div class="table-toolbar">
+<div class="status-tabs" role="navigation" aria-label="Collection status filters">
+{% for value,label in [('', 'All'),('ATTENTION','Needs attention'),('FAILED','Failed'),('SUCCESS','Success'),('MISSING','Missing'),('RUNNING','Running'),('TIMEOUT','Timeout'),('UNKNOWN','Unknown'),('RECOVERED','Recovered')] %}
+{% set active=filters.get('status','')==value %}
+<a href="{{request.url.include_query_params(page=1,status=value) if value else request.url.remove_query_params('status').include_query_params(page=1)}}" class="{{'selected' if active}}" {% if active %}aria-current="true"{% endif %}>{{label}}{% if value %} <b>{{counts.FAILED+counts.TIMEOUT+counts.MISSING+counts.UNKNOWN if value=='ATTENTION' else counts[value]}}</b>{% endif %}</a>
+{% endfor %}
+</div>
+<div class="group-actions"><button class="button" id="retry-selected">Retry selected</button><button class="button" id="rerun-selected">Run again</button></div>
+</div>
+<div class="panel table-scroll">
+<table>
+<thead>
+<tr>
+<th>
+<input type="checkbox" id="select-all" aria-label="Select completed or missing collections">
+</th>
+<th>Host / collector</th>
+<th>Zone</th>
+<th>Collection period (UTC)</th>
+<th>Status</th>
+<th>Worker</th>
+<th>Attempts</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>{% for r in rows %}<tr>
+<td>{% if r.status in ['FAILED','TIMEOUT','MISSING','UNKNOWN','SUCCESS'] %}<input data-status="{{r.status}}" type="checkbox" name="collection" value="{{r.id}}" aria-label="Select {{r.host}} {{r.period_start}}">{% endif %}</td>
+<td>
+<a class="strong" href="/collections/{{r.id}}">{{r.host}}</a>
+<small>{{r.scope}} / {{r.collector}}</small>
+</td>
+<td>
+<span class="zone-tag">{{r.zone}}</span>
+</td>
+<td class="mono">{{r.period_start[11:16]}} → {{r.period_end[11:16]}}<small>{{r.period_start[:10]}}{{' · daily local' if r.snapshot.get('schedule_kind')=='daily_local' else ' · 24h' if r.snapshot.interval_seconds==86400}}</small>
+</td>
+<td>{{badge('RECOVERED' if r.recovered else r.status)}}</td>
+<td class="mono muted">{{r.worker or '—'}}{% if r.scheduled_local %}<small>Scheduled: {{r.scheduled_local}}</small><small>{{r.execution_timezone}}</small>{% endif %}{% if r.started_local %}<small>Started: {{r.started_local}}</small>{% endif %}</td>
+<td>{{r.attempts|length}}</td>
+<td>
+<div class="table-actions">{{action_link('/collections/'+r.id,'Execution details: '+r.host+' · '+r.collector)}}</div>
+</td>
+</tr>{% else %}<tr>
+<td colspan="8" class="empty-state">No collections match these filters.</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>{{pagination(total,page,pages,page_size,"windows")}}<p class="hint">{{rows|length}} of {{total}} collections shown. Filter by status or hour to narrow the results.</p>
+{% endif %}
+<footer class="page-footer">Tasker · Collector Orchestrator <span>Collection results and execution history</span></footer>
+{% endblock %}
