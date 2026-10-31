@@ -7,10 +7,10 @@
   const check =
     '<svg class="select-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>';
 
-  window.taskerEnhanceSelects = (root = document) => {
+  window.orchestratorEnhanceSelects = (root = document) => {
     root.querySelectorAll("select:not([multiple])").forEach((select) => {
-      if (select.dataset.taskerEnhanced) return;
-      select.dataset.taskerEnhanced = "true";
+      if (select.dataset.orchestratorEnhanced) return;
+      select.dataset.orchestratorEnhanced = "true";
       const id = `styled-select-${++serial}`;
       const label = select.closest("label") || select.labels?.[0];
       const labelText = label
@@ -54,7 +54,7 @@
       menu.setAttribute("aria-label", labelText);
       menu.hidden = true;
       document.body.append(menu);
-      select.taskerCleanup = () => {
+      select.orchestratorCleanup = () => {
         if (opened?.button === button) opened.close();
         menu.remove();
       };
@@ -234,11 +234,11 @@
       sync();
     });
   };
-  window.taskerResetSelects = (root) =>
+  window.orchestratorResetSelects = (root) =>
     root
       .querySelectorAll("select")
-      .forEach((select) => select.taskerCleanup?.());
-  window.taskerEnhanceSelects();
+      .forEach((select) => select.orchestratorCleanup?.());
+  window.orchestratorEnhanceSelects();
   document.addEventListener("pointerdown", (event) => {
     if (
       opened &&

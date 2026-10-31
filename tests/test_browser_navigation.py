@@ -28,8 +28,8 @@ def test_clean_urls_remember_filters_and_clear_them_explicitly(database):
         back = client.get(
             "/w/EMEA/runs",
             headers={
-                "X-Tasker-View": "1",
-                "X-Tasker-Page-State": json.dumps(
+                "X-Orchestrator-View": "1",
+                "X-Orchestrator-Page-State": json.dumps(
                     {
                         "view": "runs",
                         "date": "2026-10-15",
@@ -89,7 +89,9 @@ def test_invalid_preferences_recover_and_path_workspace_is_authoritative(databas
         )
         assert "?" not in str(page.url)
         assert client.get("/w/NOT_AUTHORIZED/collectors").status_code == 404
-        page = client.get("/w/APAC/inventory/hosts", headers={"X-Tasker-Zone": "EMEA"})
+        page = client.get(
+            "/w/APAC/inventory/hosts", headers={"X-Orchestrator-Zone": "EMEA"}
+        )
         assert (
             page.status_code == 200
             and "nbu-apac-01" in page.text

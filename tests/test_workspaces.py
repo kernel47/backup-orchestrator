@@ -9,7 +9,7 @@ from tests.client import DashboardClient
 def auth(zone=None):
     headers = {"Authorization": "Bearer " + settings.admin_token}
     if zone:
-        headers["X-Tasker-Zone"] = zone
+        headers["X-Orchestrator-Zone"] = zone
     return headers
 
 
@@ -78,7 +78,9 @@ def test_workspace_reads_writes_and_cookie_are_isolated(database):
         # An older EMEA tab still addresses EMEA even after another tab switches the cookie.
         assert all(
             h["zone"] == "EMEA"
-            for h in client.get("/api/hosts", headers={"X-Tasker-Zone": "EMEA"}).json()
+            for h in client.get(
+                "/api/hosts", headers={"X-Orchestrator-Zone": "EMEA"}
+            ).json()
         )
         assert client.get("/?view=overview&workspace=missing").status_code == 404
         switched = client.post(

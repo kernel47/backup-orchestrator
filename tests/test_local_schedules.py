@@ -78,7 +78,7 @@ def test_same_0700_runs_at_different_utc_times(database, monkeypatch):
             ("APAC", "nbu-apac-01"),
             ("AMER", "nbu-amer-01"),
         ]:
-            headers = {**AUTH, "X-Tasker-Zone": zone}
+            headers = {**AUTH, "X-Orchestrator-Zone": zone}
             collector = next(
                 c
                 for c in client.get("/api/collectors", headers=headers).json()

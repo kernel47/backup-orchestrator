@@ -80,7 +80,7 @@ async def require_login(request: Request, call_next):
         machine = security.api_admin(request.headers.get("authorization", ""))
         selected = (
             (browser_navigation.zone if browser_navigation else "")
-            or request.headers.get("x-tasker-zone")
+            or request.headers.get("x-orchestrator-zone")
             or request.query_params.get("workspace")
             or (
                 request.query_params.get("zone")

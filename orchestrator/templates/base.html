@@ -3,28 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="tasker-state-url" content="{{request.url.include_query_params(nav_reset=1).path}}?{{request.url.include_query_params(nav_reset=1).query}}">
+<meta name="orchestrator-state-url" content="{{request.url.include_query_params(nav_reset=1).path}}?{{request.url.include_query_params(nav_reset=1).query}}">
 <meta name="workspace-zone" content="{{active_zone}}">
-<script src="/static/workspace.js?v=workspace-7"></script>
+<script src="/static/workspace.js?v=orchestrator-23"></script>
 <meta name="csrf" content="{{csrf}}">
 <title>{% block title %}Backup Orchestrator{% endblock %}</title>
-<link rel="stylesheet" href="/static/app.css?v=structure-16">
-<link rel="stylesheet" href="/static/layout.css?v=architecture-explanations-22">
-<script src="/static/selects.js?v=workspace-sidebar-10" defer>
+<link rel="stylesheet" href="/static/app.css?v=orchestrator-23">
+<link rel="stylesheet" href="/static/layout.css?v=orchestrator-23">
+<script src="/static/selects.js?v=orchestrator-23" defer>
 </script>
-<script src="/static/calendar.js?v=live-1" defer>
+<script src="/static/calendar.js?v=orchestrator-23" defer>
 </script>
-<script src="/static/app.js?v=architecture-pages-10" defer>
+<script src="/static/app.js?v=orchestrator-23" defer>
 </script>
-<script src="/static/administration.js?v=host-selection-1" defer>
+<script src="/static/administration.js?v=orchestrator-23" defer>
 </script>
-<script src="/static/inventory.js?v=workspace-7" defer>
+<script src="/static/inventory.js?v=orchestrator-23" defer>
 </script>
-<script src="/static/clocks.js?v=live-1" defer></script>
-<script src="/static/live.js?v=navigation-11" defer></script>
+<script src="/static/clocks.js?v=orchestrator-23" defer></script>
+<script src="/static/live.js?v=orchestrator-23" defer></script>
 </head>
 <body data-user-role="{{user_role}}">
-<script>try{if(localStorage.getItem('tasker.sidebarCollapsed')==='true')document.body.classList.add('sidebar-collapsed');}catch(e){}</script>
+<script>try{if(localStorage.getItem('orchestrator.sidebarCollapsed')==='true')document.body.classList.add('sidebar-collapsed');}catch(e){}</script>
 <aside class="sidebar">
 <a class="brand" href="/">
 <span class="brand-mark">▥</span>

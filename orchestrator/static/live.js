@@ -15,10 +15,11 @@
     lastInteraction = 0,
     failures = 0;
   try {
-    const value = localStorage.getItem("tasker.refresh");
+    const value = localStorage.getItem("orchestrator.refresh");
     if (["0", "12000", "30000", "60000"].includes(value))
       interval = Number(value);
-    live = interval > 0 && localStorage.getItem("tasker.live") !== "false";
+    live =
+      interval > 0 && localStorage.getItem("orchestrator.live") !== "false";
   } catch (e) {}
   const status = (text) => (label.textContent = text);
   const isLiveURL = (url) =>
@@ -31,16 +32,16 @@
         url.pathname,
       ) ||
       /^\/collections\/[^/]+$/.test(url.pathname));
-  const initialSavedState = history.state?.taskerURL;
+  const initialSavedState = history.state?.orchestratorURL;
   const stateURL = () =>
-    document.querySelector('meta[name="tasker-state-url"]')?.content ||
+    document.querySelector('meta[name="orchestrator-state-url"]')?.content ||
     location.href;
   const activeURL = () =>
-    new URL(history.state?.taskerURL || stateURL(), location.origin);
+    new URL(history.state?.orchestratorURL || stateURL(), location.origin);
   if (!initialSavedState)
     history.replaceState(
       {
-        taskerURL: stateURL(),
+        orchestratorURL: stateURL(),
       },
       "",
       location.href,
@@ -50,10 +51,10 @@
     return (
       Boolean(window.getSelection?.()?.toString()) ||
       document.hidden ||
-      window.taskerMutationPending > 0 ||
+      window.orchestratorMutationPending > 0 ||
       Date.now() - lastInteraction < 8000 ||
       document.querySelector(
-        'dialog[open],.select-trigger[aria-expanded="true"],.tasker-calendar:not([hidden]),[name="collection"]:checked,#select-all:checked,details[open]:not(.advanced-filters)',
+        'dialog[open],.select-trigger[aria-expanded="true"],.orchestrator-calendar:not([hidden]),[name="collection"]:checked,#select-all:checked,details[open]:not(.advanced-filters)',
       ) ||
       document.activeElement?.matches(
         "input,select,textarea,.select-trigger,.date-trigger",
@@ -109,23 +110,25 @@
     const tablePositions = [...previous.querySelectorAll(".table-scroll")].map(
       (el) => el.scrollLeft,
     );
-    window.taskerResetSelects?.(previous);
-    window.taskerResetCalendars?.(previous);
+    window.orchestratorResetSelects?.(previous);
+    window.orchestratorResetCalendars?.(previous);
     previous.replaceWith(next);
     if (poll)
       next.querySelectorAll("details").forEach((d, i) => {
         if (i < opened.length) d.open = opened[i];
       });
-    window.taskerEnhanceSelects?.(next);
-    window.taskerEnhanceCalendars?.(next);
-    window.taskerRenderClocks?.();
+    window.orchestratorEnhanceSelects?.(next);
+    window.orchestratorEnhanceCalendars?.(next);
+    window.orchestratorRenderClocks?.();
     next
       .querySelectorAll(".table-scroll")
       .forEach((el, i) => (el.scrollLeft = tablePositions[i] || 0));
     document.title = doc.title;
-    const remoteState = doc.querySelector('meta[name="tasker-state-url"]');
+    const remoteState = doc.querySelector(
+      'meta[name="orchestrator-state-url"]',
+    );
     if (remoteState)
-      document.querySelector('meta[name="tasker-state-url"]').content =
+      document.querySelector('meta[name="orchestrator-state-url"]').content =
         remoteState.content;
     // Workspace parameters are added to client URLs; use stable page keys instead.
     const activeKeys = new Set(
@@ -145,7 +148,7 @@
       });
     scrollTo(scroll.x, scroll.y);
     document.body.classList.remove("sidebar-expanded");
-    document.dispatchEvent(new CustomEvent("tasker:render"));
+    document.dispatchEvent(new CustomEvent("orchestrator:render"));
   }
   async function load(
     url,
@@ -162,11 +165,11 @@
     if (!poll) root().setAttribute("aria-busy", "true");
     try {
       const headers = {
-        "X-Tasker-View": "1",
+        "X-Orchestrator-View": "1",
       };
       let requestURL = url;
       if (poll && !location.pathname.startsWith("/collections/")) {
-        headers["X-Tasker-Page-State"] = JSON.stringify(
+        headers["X-Orchestrator-Page-State"] = JSON.stringify(
           Object.fromEntries(url.searchParams),
         );
         requestURL = new URL(location.href);
@@ -200,12 +203,12 @@
       });
       if (
         push &&
-        (stateURL() !== history.state?.taskerURL ||
+        (stateURL() !== history.state?.orchestratorURL ||
           responseURL.href !== location.href)
       )
         history.pushState(
           {
-            taskerURL: stateURL(),
+            orchestratorURL: stateURL(),
           },
           "",
           responseURL.pathname + responseURL.search + responseURL.hash,
@@ -245,7 +248,7 @@
       poll: true,
     });
   }
-  window.TaskerLive = {
+  window.OrchestratorLive = {
     enabled,
     refresh: (options) =>
       load(activeURL(), {
@@ -262,9 +265,9 @@
     try {
       if (live && !interval) {
         interval = 12000;
-        localStorage.setItem("tasker.refresh", "12000");
+        localStorage.setItem("orchestrator.refresh", "12000");
       }
-      localStorage.setItem("tasker.live", String(live));
+      localStorage.setItem("orchestrator.live", String(live));
     } catch (e) {}
     controls();
     status(live ? "Live updates enabled" : "Live updates paused");

@@ -29,9 +29,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings(
-    _env_file=os.environ.get(
-        "ORCHESTRATOR_ENV_FILE", os.environ.get("TASKER_ENV_FILE", str(ROOT / ".env"))
-    )
+    _env_file=os.environ.get("ORCHESTRATOR_ENV_FILE", str(ROOT / ".env"))
 )
 
 

@@ -62,7 +62,7 @@ The period comes from the assigned task, including historical retries. No manual
 
 `command` is a fixed executable/argument list. `context_args` maps option names to required task fields; `parameter_args` maps option names to merged parameter keys. Only locally mapped parameters become options. Optional `defaults` supplies parameter defaults, and `required_parameters` rejects missing values before launch. True adds a boolean flag, false/null omits it; strings/numbers become `--option=value`. Nested objects/lists are rejected. Values are passed directly as argv without a shell. Dashboard parameters cannot replace the executable or the task's host/period mappings. Keep credentials in the worker environment or the collector's own configuration, not command arguments.
 
-By default, commands output the standard Backup Orchestrator report above (`report_format: tasker`). The shipped `backup_collector` alias instead accepts the native backup-collector JSON (`report_format: backup_collector`), for example:
+By default, commands output the standard Backup Orchestrator report above (`report_format: standard`). The shipped `backup_collector` alias instead accepts the native backup-collector JSON (`report_format: backup_collector`), for example:
 
 ```json
 {

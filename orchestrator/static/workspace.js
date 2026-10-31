@@ -13,7 +13,7 @@
         options.headers ||
           (input instanceof Request ? input.headers : undefined),
       );
-      headers.set("X-Tasker-Zone", zone);
+      headers.set("X-Orchestrator-Zone", zone);
       options = {
         ...options,
         headers,
@@ -68,5 +68,5 @@
       });
   }
   document.addEventListener("DOMContentLoaded", bind);
-  document.addEventListener("tasker:render", bind);
+  document.addEventListener("orchestrator:render", bind);
 })();

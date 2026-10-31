@@ -14,7 +14,7 @@ def test_authenticated_metadata_heartbeat_and_documentation_are_scoped(database)
     runtime = {
         "platform": "Red Hat Enterprise Linux",
         "python_version": "3.12.9",
-        "master_endpoint": "https://tasker.example.internal",
+        "master_endpoint": "https://backup-orchestrator.example.internal",
         "concurrency": 2,
         "scripts": [
             {"alias": "backup_collector", "kind": "command", "available": False}

@@ -73,7 +73,7 @@ sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator
 
 The installer creates `.venv` if needed, installs `requirements.txt` as the service account, installs the selected unit from `systemd/`, reloads systemd, and enables/restarts the service. It checks for the manually configured file and leaves it untouched. Python 3.11 can be selected instead.
 
-When upgrading from the previous service names, the installer disables and stops the matching `tasker-master` or `tasker-worker` service before starting the new one. Keep the existing environment file and database. You can retain an existing service account by passing its name with `--user`.
+If replacing a service installed under another name, stop and disable that service before installing this one to avoid running two masters. Keep the existing environment file and database. You can retain an existing service account by passing its name with `--user`.
 
 The unit runs `.venv/bin/python run.py master` or `.venv/bin/python run.py worker`, with the project as its working directory. The master reads `.env`; the worker reads `.env.worker`. There are no separate configure/run/start wrapper scripts.
 

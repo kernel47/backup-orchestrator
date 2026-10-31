@@ -78,7 +78,7 @@ Optional `preferred_worker` and `fallback_worker` must match the host's zone and
 
 Only adapt `collect_hosts()` in `scripts/sync_inventory.py` for your API. It intentionally contains no provider implementation. Return a list of host dictionaries; store API credentials in `.env`. A failed refresh preserves the previous file. Static lists need no Python changes. The dashboard reads files and never executes provider code.
 
-Discover creates a reviewable preview of new, changed, unchanged, missing and archived hosts. Apply is atomic and rejects stale previews. Existing activation states are preserved; archived hosts are not automatically restored. The script reuses or creates a file source and prints a change summary. The dashboard also offers Discover and Apply. External tools can push the same envelope to `POST /api/inventory/discover` using the admin bearer token and an `X-Tasker-Zone` header.
+Discover creates a reviewable preview of new, changed, unchanged, missing and archived hosts. Apply is atomic and rejects stale previews. Existing activation states are preserved; archived hosts are not automatically restored. The script reuses or creates a file source and prints a change summary. The dashboard also offers Discover and Apply. External tools can push the same envelope to `POST /api/inventory/discover` using the admin bearer token and an `X-Orchestrator-Zone` header.
 
 ## Configuration and storage
 
@@ -148,7 +148,7 @@ Overview, Collectors, Runs & history and attempt details use in-place navigation
 
 Select the zone using the workspace selector at the bottom of the sidebar. Overview, collectors, hosts, groups, schedules, sources, satellites and history are scoped to it. New objects inherit that zone. No zone means the first-zone setup screen. The last selected zone is remembered; clean browser paths include the workspace, for example `/w/EMEA/collectors`. Each tab also sends its workspace header for API calls. Switching zones opens Overview and drops object/filter IDs from the previous zone.
 
-Collectors, groups, schedules and sources have persisted zone ownership. A group cannot span zones; a schedule cannot target a collector/group in another zone. Scripts and scope categories are shared, while collector configuration is per zone. System bearer-token integrations may enumerate all zones; specify `X-Tasker-Zone: EMEA` for scoped reads/writes. Normal browser users cannot bypass zone filtering with an object ID. IDs for hosts/satellites remain globally unique; use qualified IDs. Collector names may repeat, and conflicting new collector IDs get a zone prefix.
+Collectors, groups, schedules and sources have persisted zone ownership. A group cannot span zones; a schedule cannot target a collector/group in another zone. Scripts and scope categories are shared, while collector configuration is per zone. System bearer-token integrations may enumerate all zones; specify `X-Orchestrator-Zone: EMEA` for scoped reads/writes. Normal browser users cannot bypass zone filtering with an object ID. IDs for hosts/satellites remain globally unique; use qualified IDs. Collector names may repeat, and conflicting new collector IDs get a zone prefix.
 
 Startup migrates old shared definitions into zone-owned copies when needed. Existing period and attempt IDs and report/log contents are preserved. A multi-zone inventory preview expires and must be discovered again; use one source/file per zone. Make a backup before upgrading.
 

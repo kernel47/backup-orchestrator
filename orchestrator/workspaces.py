@@ -20,8 +20,8 @@ from .models import (
     Zone,
 )
 
-current_zone = ContextVar("tasker_zone", default=None)
-allowed_zones = ContextVar("tasker_allowed_zones", default=None)
+current_zone = ContextVar("orchestrator_zone", default=None)
+allowed_zones = ContextVar("orchestrator_allowed_zones", default=None)
 OWNED = (Host, Collector, HostGroup, Schedule, Window, InventorySource, InventorySync)
 
 

@@ -37,14 +37,15 @@ async function api(path, method = "POST", data = {}) {
 }
 async function action(button, path, method, data, success, redirect = null) {
   button.disabled = true;
-  window.taskerMutationPending = (window.taskerMutationPending || 0) + 1;
+  window.orchestratorMutationPending =
+    (window.orchestratorMutationPending || 0) + 1;
   try {
     const out = await api(path, method, data);
     if (out) {
       toast(success(out));
       if (redirect) location.assign(redirect(out));
-      else if (window.TaskerLive?.enabled())
-        await window.TaskerLive.refresh({
+      else if (window.OrchestratorLive?.enabled())
+        await window.OrchestratorLive.refresh({
           force: true,
         });
       else setTimeout(() => location.reload(), 1200);
@@ -53,7 +54,7 @@ async function action(button, path, method, data, success, redirect = null) {
     toast(e.message, true);
   } finally {
     button.disabled = false;
-    window.taskerMutationPending--;
+    window.orchestratorMutationPending--;
   }
 }
 // Delegation keeps collection actions working after fragment replacement.
@@ -171,7 +172,7 @@ document.querySelectorAll("[data-update-collector]").forEach((form) =>
 );
 let dashboardRefresh = 12000;
 try {
-  const saved = localStorage.getItem("tasker.refresh");
+  const saved = localStorage.getItem("orchestrator.refresh");
   if (["0", "12000", "30000", "60000"].includes(saved))
     dashboardRefresh = Number(saved);
 } catch (e) {}
@@ -224,7 +225,7 @@ sidebarToggle?.addEventListener("click", () => {
     document.body.classList.toggle("sidebar-collapsed");
     try {
       localStorage.setItem(
-        "tasker.sidebarCollapsed",
+        "orchestrator.sidebarCollapsed",
         String(document.body.classList.contains("sidebar-collapsed")),
       );
     } catch (e) {}
@@ -258,7 +259,7 @@ if (refreshSelect) {
   );
   refreshSelect.addEventListener("change", () => {
     try {
-      localStorage.setItem("tasker.refresh", refreshSelect.value);
+      localStorage.setItem("orchestrator.refresh", refreshSelect.value);
       document.querySelector("#preferences-saved").textContent =
         "Preference saved for this browser.";
     } catch (e) {
@@ -332,4 +333,4 @@ function revealActiveNavigation() {
     nav.scrollTop += item.bottom - menu.bottom;
 }
 revealActiveNavigation();
-document.addEventListener("tasker:render", revealActiveNavigation);
+document.addEventListener("orchestrator:render", revealActiveNavigation);

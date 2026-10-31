@@ -34,11 +34,11 @@ async def _execute(task):
         if definition is None:
             raise ValueError("Script is not allowed on this satellite")
         report_format = (
-            definition.get("report_format", "tasker")
+            definition.get("report_format", "standard")
             if isinstance(definition, dict)
-            else "tasker"
+            else "standard"
         )
-        if report_format not in ("tasker", "backup_collector"):
+        if report_format not in ("standard", "backup_collector"):
             raise ValueError("Unknown command report format")
         command = (
             build_command(definition, task)

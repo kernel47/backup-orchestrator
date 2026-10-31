@@ -23,15 +23,15 @@ select:not([hidden]){appearance:none;-webkit-appearance:none;padding-right:34px;
 .select-option[aria-disabled=true]{opacity:.45;cursor:not-allowed}
 @media(max-width:720px){.filters .select-trigger{font-size:13px;padding:8px;gap:8px}.select-menu{max-height:210px}.select-option{min-height:36px}}
 
-/* Date picker shares Tasker's dropdown surface, focus ring and selection colour. */
+/* Date picker shares Orchestrator's dropdown surface, focus ring and selection colour. */
 .date-trigger{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:36px;width:100%;padding:9px 11px;border:1px solid #dce2eb;border-radius:5px;background:#fff;color:#34425a;font-size:13px;font-weight:400;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
 .date-trigger:hover{border-color:#bac7dc;background:#fcfdff}
 .date-trigger:focus-visible,.date-trigger[aria-expanded=true]{outline:none;border-color:#6e87ee;box-shadow:0 0 0 3px #e8edff}
 .date-trigger:disabled{opacity:.5;cursor:not-allowed}
 .date-value{white-space:nowrap;font-variant-numeric:tabular-nums}
 .date-icon{height:15px;width:15px;flex:none;color:#8796ad}
-.tasker-calendar{position:fixed;z-index:1001;overflow:auto;padding:14px;border:1px solid #e0e6f0;border-radius:10px;background:#fff;box-shadow:0 8px 28px #152a491f,0 2px 5px #152a4908;color:#455571;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.tasker-calendar[hidden]{display:none}
+.orchestrator-calendar{position:fixed;z-index:1001;overflow:auto;padding:14px;border:1px solid #e0e6f0;border-radius:10px;background:#fff;box-shadow:0 8px 28px #152a491f,0 2px 5px #152a4908;color:#455571;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.orchestrator-calendar[hidden]{display:none}
 .calendar-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}
 .calendar-title{font-size:13px;font-weight:650;color:#344764;text-transform:capitalize}
 .calendar-nav{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid transparent;border-radius:5px;background:#fff;color:#8190a6;cursor:pointer;padding:5px}
@@ -52,7 +52,7 @@ select:not([hidden]){appearance:none;-webkit-appearance:none;padding-right:34px;
 .calendar-footer button{border:0;border-radius:4px;background:transparent;padding:5px 7px;font-size:12px;font-weight:550;cursor:pointer}
 .calendar-today{color:#526ec1}.calendar-today small{font-size:10px;font-weight:450;color:#9aa8be;margin-left:3px}
 .calendar-close{color:#929eaf}.calendar-footer button:hover{background:#f1f4fb}
-@media(max-width:720px){.filters .date-trigger{padding:8px;font-size:13px;gap:7px}.tasker-calendar{padding:12px}.calendar-day{height:34px}}
+@media(max-width:720px){.filters .date-trigger{padding:8px;font-size:13px;gap:7px}.orchestrator-calendar{padding:12px}.calendar-day{height:34px}}
 /* Overview navigation, satellite health and list pagination. */
 .period-navigation,.pagination{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:18px 0}.period-navigation{justify-content:space-between}.pagination{justify-content:flex-end}.pagination span:first-child{margin-right:auto;color:#687891}.pagination .selected{font-weight:700;color:#365fc7}.config-tabs{margin-bottom:24px}.satellite-strip,.period-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:16px}.satellite-status,.period-day{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid #e0e6f0;border-radius:8px;background:#fafbfe}.satellite-status{position:relative;padding-left:30px}.status-dot{position:absolute;left:12px;top:18px;width:8px;height:8px;border-radius:50%}.status-dot.online{background:#259775}.status-dot.offline{background:#d65460}.satellite-status span,.period-day small{font-size:13px;color:#687891}.period-day:hover{border-color:#647fd1}.history-cell{min-width:64px}
 /* Pagination belongs to its history table, not the whole page. */

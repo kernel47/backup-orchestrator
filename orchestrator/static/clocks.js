@@ -34,7 +34,7 @@
       }
     }
   }
-  window.taskerRenderClocks = render;
+  window.orchestratorRenderClocks = render;
   render();
   setInterval(render, 1000);
 })();

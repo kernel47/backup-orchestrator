@@ -69,12 +69,6 @@ install_unit() {
 
 start_service() {
     echo "[3/3] Enabling and starting $unit_name"
-    # Avoid two schedulers when upgrading an installation using the previous name.
-    legacy_unit="tasker-$role.service"
-    if systemctl is-active --quiet "$legacy_unit" || systemctl is-enabled --quiet "$legacy_unit"; then
-        echo "Stopping the previous service: $legacy_unit"
-        systemctl disable --now "$legacy_unit"
-    fi
     systemctl enable "$unit_name"
     systemctl restart "$unit_name"
     systemctl --no-pager status "$unit_name"

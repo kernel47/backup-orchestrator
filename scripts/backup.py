@@ -32,7 +32,9 @@ def backup(destination, check_restore=False):
             live.backup(snapshot)
         verify(destination)
         if check_restore:
-            with tempfile.TemporaryDirectory(prefix="tasker-restore-") as directory:
+            with tempfile.TemporaryDirectory(
+                prefix="backup-orchestrator-restore-"
+            ) as directory:
                 restored = Path(directory) / "restored.db"
                 with (
                     sqlite3.connect(destination) as src,
@@ -58,7 +60,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
-        default="var/backups/tasker-"
+        default="var/backups/backup-orchestrator-"
         + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         + ".db",
     )

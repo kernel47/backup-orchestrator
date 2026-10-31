@@ -1,4 +1,4 @@
-/* Tasker date picker. The original ISO date input remains the form value. */
+/* Orchestrator date picker. The original ISO date input remains the form value. */
 (() => {
   const DAY = 86400000;
   const parse = (value) => {
@@ -50,17 +50,17 @@
   const today = () => parse(new Date().toISOString().slice(0, 10));
   let serial = 0;
 
-  window.taskerEnhanceCalendars = (root = document) => {
+  window.orchestratorEnhanceCalendars = (root = document) => {
     root.querySelectorAll('input[type="date"]').forEach((input) => {
-      if (input.dataset.taskerEnhanced) return;
-      input.dataset.taskerEnhanced = "true";
+      if (input.dataset.orchestratorEnhanced) return;
+      input.dataset.orchestratorEnhanced = "true";
       const controller = new AbortController(),
         signal = controller.signal;
-      input.taskerCleanup = () => {
+      input.orchestratorCleanup = () => {
         controller.abort();
         panel.remove();
       };
-      const id = `tasker-calendar-${++serial}`;
+      const id = `orchestrator-calendar-${++serial}`;
       const label = input.closest("label");
       const caption = label
         ? [...label.childNodes]
@@ -86,7 +86,7 @@
       if (label) label.htmlFor = trigger.id;
       const panel = document.createElement("div");
       panel.id = id;
-      panel.className = "tasker-calendar";
+      panel.className = "orchestrator-calendar";
       panel.hidden = true;
       panel.setAttribute("role", "dialog");
       panel.setAttribute("aria-modal", "true");
@@ -182,7 +182,7 @@
       function open() {
         if (trigger.disabled) return;
         document.dispatchEvent(
-          new CustomEvent("tasker:calendar-open", {
+          new CustomEvent("orchestrator:calendar-open", {
             detail: id,
           }),
         );
@@ -303,7 +303,7 @@
         },
       );
       document.addEventListener(
-        "tasker:calendar-open",
+        "orchestrator:calendar-open",
         (event) => {
           if (event.detail !== id) close(false);
         },
@@ -349,9 +349,9 @@
       sync();
     });
   };
-  window.taskerResetCalendars = (root) =>
+  window.orchestratorResetCalendars = (root) =>
     root
       .querySelectorAll('input[type="date"]')
-      .forEach((input) => input.taskerCleanup?.());
-  window.taskerEnhanceCalendars();
+      .forEach((input) => input.orchestratorCleanup?.());
+  window.orchestratorEnhanceCalendars();
 })();

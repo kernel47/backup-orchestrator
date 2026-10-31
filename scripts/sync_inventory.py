@@ -92,7 +92,7 @@ def main():
         base_url=settings.master_url,
         headers={
             "Authorization": "Bearer " + settings.admin_token,
-            "X-Tasker-Zone": zone,
+            "X-Orchestrator-Zone": zone,
         },
         timeout=30,
     ) as client:

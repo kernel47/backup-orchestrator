@@ -40,7 +40,7 @@ def migrate():
             return
 
         def clone_id(kind, oid, z):
-            return str(uuid5(NAMESPACE_URL, f"tasker/{kind}/{oid}/{z}"))
+            return str(uuid5(NAMESPACE_URL, f"backup-orchestrator/{kind}/{oid}/{z}"))
 
         def copy(obj, oid, zone):
             values = {col.name: getattr(obj, col.name) for col in obj.__table__.columns}

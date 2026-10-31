@@ -264,7 +264,7 @@ class BrowserNavigation:
         ):
             variant = "_detail"
         self.cookie_key = (
-            "tasker_nav_"
+            "orchestrator_nav_"
             + self.view.replace("-", "_")
             + variant
             + "_"
@@ -334,7 +334,7 @@ def prepare(request):
     route = decode_route(route_path)
     browser = (
         "text/html" in request.headers.get("accept", "")
-        or request.headers.get("x-tasker-view") == "1"
+        or request.headers.get("x-orchestrator-view") == "1"
     )
     if request.method != "GET" or (not route and not (path == "/" and browser)):
         return None
@@ -347,7 +347,7 @@ def prepare(request):
     if view == "collection-detail" and not match and not browser:
         return None
     header_state = False
-    state = request.headers.get("x-tasker-page-state", "")
+    state = request.headers.get("x-orchestrator-page-state", "")
     if state and len(state) < 4096:
         try:
             data = json.loads(state)
