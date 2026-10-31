@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 project_root="$PWD"
-service_user="tasker"
+service_user="backup-orchestrator"
 python_binary="${PYTHON:-python3}"
 
 usage() {
@@ -22,13 +22,13 @@ as_service_user() {
 }
 
 check_machine() {
-    [[ "$(uname -s)" == Linux ]] || fail "Linux/systemd is required. For local development use .venv/bin/python tasker.py $role."
+    [[ "$(uname -s)" == Linux ]] || fail "Linux/systemd is required. For local development use .venv/bin/python run.py $role."
     command -v systemctl >/dev/null || fail "systemctl is not available."
     command -v runuser >/dev/null || fail "runuser is not available (util-linux package)."
     [[ "$EUID" -eq 0 ]] || fail "Run the installer with sudo."
     [[ "$service_user" =~ ^[a-z_][a-z0-9_-]*\$?$ && "$service_user" != root ]] || fail "Choose a non-root service account."
     id "$service_user" >/dev/null 2>&1 || fail "Create the $service_user account first."
-    [[ "$project_root" =~ ^/[A-Za-z0-9_./-]+$ ]] || fail "Use a path without spaces or special characters, such as /data/tasker."
+    [[ "$project_root" =~ ^/[A-Za-z0-9_./-]+$ ]] || fail "Use a path without spaces or special characters, such as /data/backup-orchestrator/app."
 }
 
 check_configuration() {
@@ -60,8 +60,8 @@ install_unit() {
     echo "[2/3] Installing $unit_name"
     unit_temporary="$(mktemp)"
     trap 'rm -f "$unit_temporary"' EXIT
-    sed -e "s|/data/tasker|$project_root|g" \
-        -e "s|^User=tasker$|User=$service_user|" \
+    sed -e "s|/data/backup-orchestrator/app|$project_root|g" \
+        -e "s|^User=backup-orchestrator$|User=$service_user|" \
         "systemd/$unit_name" > "$unit_temporary"
     install -m 644 "$unit_temporary" "/etc/systemd/system/$unit_name"
     systemctl daemon-reload
@@ -69,6 +69,12 @@ install_unit() {
 
 start_service() {
     echo "[3/3] Enabling and starting $unit_name"
+    # Avoid two schedulers when upgrading an installation using the previous name.
+    legacy_unit="tasker-$role.service"
+    if systemctl is-active --quiet "$legacy_unit" || systemctl is-enabled --quiet "$legacy_unit"; then
+        echo "Stopping the previous service: $legacy_unit"
+        systemctl disable --now "$legacy_unit"
+    fi
     systemctl enable "$unit_name"
     systemctl restart "$unit_name"
     systemctl --no-pager status "$unit_name"
@@ -98,7 +104,7 @@ config_file=".env"
 if [[ "$role" == worker ]]; then
     config_file=".env.worker"
 fi
-unit_name="tasker-$role.service"
+unit_name="backup-orchestrator-$role.service"
 
 check_machine
 check_configuration

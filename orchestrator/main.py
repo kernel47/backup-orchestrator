@@ -47,7 +47,9 @@ async def lifespan(app):
 
 last_scheduler_tick = time.monotonic()
 app = FastAPI(
-    title="Tasker · Collector Orchestrator", version="0.1.0", lifespan=lifespan
+    title="Backup Orchestrator",
+    version="0.1.0",
+    lifespan=lifespan,
 )
 app.middleware("http")(require_login)
 
@@ -91,7 +93,7 @@ def health():
     )
     data = {
         "status": "ok" if scheduler_ok else "error",
-        "product": "Tasker",
+        "product": "Backup Orchestrator",
         "version": "0.1.0",
         "database": "ok",
         "scheduler": settings.scheduler_enabled,

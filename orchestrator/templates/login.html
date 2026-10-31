@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Tasker</title><link rel="stylesheet" href="/static/login.css?v=1"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Backup Orchestrator</title><link rel="stylesheet" href="/static/login.css?v=1"></head>
 <body>
 <main class="login-card">
-<a class="brand" href="/login"><span class="brand-mark" aria-hidden="true">▥</span><span>TASKER<small>ORCHESTRATOR</small></span></a>
+<a class="brand" href="/login"><span class="brand-mark" aria-hidden="true">▥</span><span>BACKUP<small>ORCHESTRATOR</small></span></a>
 <div class="intro"><h1>Sign in</h1><p>Manage your collectors, schedules and satellites.</p></div>
 {% if error %}<div class="error" role="alert">{{error}}</div>{% endif %}
 {% if not configured %}<div class="error" role="alert">Login is not configured. Set AUTH_USERNAME and AUTH_PASSWORD in the master .env file.</div>{% endif %}
@@ -13,6 +13,6 @@
 <label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" maxlength="1024" required>
 <button type="submit" {% if not configured %}disabled{% endif %}>Sign in <span aria-hidden="true">→</span></button>
 </form>
-<footer>Tasker · Collection orchestration</footer>
+<footer>Backup Orchestrator · Collection orchestration</footer>
 </main>
 </body></html>

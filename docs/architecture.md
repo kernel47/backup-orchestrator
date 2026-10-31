@@ -1,4 +1,4 @@
-# Tasker — managed architecture
+# Backup Orchestrator — managed architecture
 
 The master runs FastAPI, the Jinja dashboard, managed domain services and one embedded scheduler. Workers use outbound HTTP and execute trusted Python collectors or allowlisted commands in subprocesses. Inventory discovery reads JSON/YAML exports; scripts/sync_inventory.py optionally refreshes exports from an API.
 
@@ -11,7 +11,7 @@ Normal startup migrates storage and preserves managed state. It does not load ob
 
 ## Modules
 
-- `tasker.py`: shared foreground/systemd entry point; `install.sh` installs the chosen unit and runtime requirements.
+- `run.py`: shared foreground/systemd entry point; `install.sh` installs the chosen unit and runtime requirements.
 - `orchestrator/main.py`: application assembly, health endpoint and scheduler lifecycle.
 - `orchestrator/catalog_api.py`: collector definitions, host/group listings and worker status.
 - `orchestrator/schedules_api.py`: recurring schedules, target resolution and group-run requests.

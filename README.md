@@ -1,10 +1,10 @@
-# Tasker
+# Backup Orchestrator
 
 A generic collector orchestrator: FastAPI master, HTTP workers, host inventory, schedules and execution history. A fresh installation contains no configured objects or synthetic history. Only the `fake` collector returns simulated results when explicitly configured and executed.
 
 ## Install and start
 
-Python 3.11 or 3.12 is required. The standard Red Hat deployment consists of two supplied units, `systemd/tasker-master.service` and `systemd/tasker-worker.service`, and one installer: `install.sh`.
+Python 3.11 or 3.12 is required. The standard Red Hat deployment consists of two supplied units, `systemd/backup-orchestrator-master.service` and `systemd/backup-orchestrator-worker.service`, and one installer: `install.sh`.
 
 Configure the machine before starting it:
 
@@ -16,22 +16,22 @@ cp .env.master.example .env        # Master machine: edit settings and replace p
 Using an existing service account with access to the checkout:
 
 ```bash
-sudo ./install.sh master --user tasker
-# On each satellite: sudo ./install.sh worker --user tasker
+sudo ./install.sh master --user backup-orchestrator
+# On each satellite: sudo ./install.sh worker --user backup-orchestrator
 ```
 
-The installer reads `requirements.txt` and prepares runtime dependencies in `.venv`, installs the selected unit and enables/restarts it. It never generates or overwrites your configuration. Set `PYTHON=python3.12` when needed, for example `sudo PYTHON=python3.12 ./install.sh master --user tasker`.
+The installer reads `requirements.txt` and prepares runtime dependencies in `.venv`, installs the selected unit and enables/restarts it. It never generates or overwrites your configuration. Set `PYTHON=python3.12` when needed, for example `sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator`.
 
-Use normal service commands: `systemctl status tasker-master`, `systemctl restart tasker-master` and `journalctl -u tasker-master`. The default master bind is `127.0.0.1:8000`. Workers use outbound HTTP and a provisioned individual token; each belongs to one zone. Copy neither the master database nor its credentials to a satellite. Use one master process for the SQLite scheduler.
+Use normal service commands: `systemctl status backup-orchestrator-master`, `systemctl restart backup-orchestrator-master` and `journalctl -u backup-orchestrator-master`. The default master bind is `127.0.0.1:8000`. Workers use outbound HTTP and a provisioned individual token; each belongs to one zone. Copy neither the master database nor its credentials to a satellite. Use one master process for the SQLite scheduler.
 
 For Mac development or foreground troubleshooting, use the same entry point as systemd:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python tasker.py master
-# In another terminal: .venv/bin/python tasker.py worker
-# Alternate configuration: .venv/bin/python tasker.py worker --config /path/to/worker.env
+.venv/bin/python run.py master
+# In another terminal: .venv/bin/python run.py worker
+# Alternate configuration: .venv/bin/python run.py worker --config /path/to/worker.env
 ```
 
 Stop foreground processes with Ctrl+C. Do not launch a second master while the service is running. The master reads `.env`; the worker reads `.env.worker`. Existing machine secrets and databases are preserved. See [the Red Hat installation guide](docs/installation-redhat.md) for network access, backup-collector and pilot checks.
@@ -94,7 +94,7 @@ Only three external inputs remain:
 
 | Directory | Responsibility |
 | --- | --- |
-| `tasker.py`, `install.sh`, `systemd/` | Service/foreground entry point, installer and service units |
+| `run.py`, `install.sh`, `systemd/` | Service/foreground entry point, installer and service units |
 | `requirements.txt`, `requirements-dev.txt` | Tested runtime dependencies and optional development tools |
 | `orchestrator/main.py` | Application assembly, health and scheduler lifecycle |
 | `orchestrator/*_api.py` | Configuration, inventory, scheduling and execution APIs |
@@ -111,7 +111,7 @@ Only three external inputs remain:
 | `tests/fixtures/` | Isolated test data; never imported by normal installation/startup |
 | `var/` | Local database, logs and backups; ignored by Git |
 
-Collectors either implement `collect(context) -> dict` or run as an allowlisted command that writes its report JSON to stdout and logs to stderr. The `backup_collector` command accepts its native JSON: Tasker trusts its final status and keeps collection/storage/destination diagnostics in Details without interpreting them. They send their business data directly to their destination. Tasker receives only a small execution report and captured logs:
+Collectors either implement `collect(context) -> dict` or run as an allowlisted command that writes its report JSON to stdout and logs to stderr. The `backup_collector` command accepts its native JSON: Backup Orchestrator trusts its final status and keeps collection/storage/destination diagnostics in Details without interpreting them. They send their business data directly to their destination. Backup Orchestrator receives only a small execution report and captured logs:
 
 ```json
 {
@@ -154,7 +154,7 @@ Startup migrates old shared definitions into zone-owned copies when needed. Exis
 
 Collectors owns the period summary counters (expected, successful, failed and running/pending), filtered by workspace, scope and selected date/period. History keeps the execution list and status filters without duplicating these summary cards. Collectors opens in Week by default. Week and Month include the same period overview and Previous/Next controls as History; Day has neither overview nor period navigation. Collectors shows one cell per collector/day (current week by default; Day and Month also available). Failure takes priority over missing/unknown, then active execution, then success. Future periods are planned, never missing. Recovered means a successful period had an earlier failed/unknown/timed-out attempt; the original attempts remain in History. Click a day to open History with the collector/date/workspace selected. History has an optional hour selector in Advanced filters, no 24-hour grid. Retry applies to failed, unknown, missing or timed-out periods; Run again applies to successful periods. Running/pending periods cannot be queued twice. Replays can repeat destination delivery: collectors must handle deduplication/idempotency.
 
-Overview shows a live seven-day activity chart, the six latest execution attempts, and collector health based on the latest period per host. Click a chart day or execution to inspect history. Satellite management stays under Configuration. Collector settings uses a scope-based table with separate View/Edit detail pages and a dedicated Add collector form. Health cards show the last success and overdue hosts for enabled schedules. Last success is the collector's most recent successful attempt, not a guarantee that every host succeeded. Paused schedules are labelled separately. Tasker monitors script execution/delivery; a successful script can collect failed business/backup jobs. Those job results are analyzed at the collector's destination.
+Overview shows a live seven-day activity chart, the six latest execution attempts, and collector health based on the latest period per host. Click a chart day or execution to inspect history. Satellite management stays under Configuration. Collector settings uses a scope-based table with separate View/Edit detail pages and a dedicated Add collector form. Health cards show the last success and overdue hosts for enabled schedules. Last success is the collector's most recent successful attempt, not a guarantee that every host succeeded. Paused schedules are labelled separately. Backup Orchestrator monitors script execution/delivery; a successful script can collect failed business/backup jobs. Those job results are analyzed at the collector's destination.
 
 Schedules is a table with Add schedule and individual detail/edit pages. New intervals are 1, 2, 4, 6, 12 or 24 hours, or daily at a satellite-local time (including DST). Older intervals remain readable and unchanged.
 

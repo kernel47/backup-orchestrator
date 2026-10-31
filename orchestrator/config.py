@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     offline_seconds: int = 20
     poll_seconds: float = 1
     scheduler_enabled: bool = True
-    workspace_name: str = "Tasker workspace"
+    workspace_name: str = "Backup Orchestrator workspace"
     worker_id: str = ""
     worker_timezone: str = ""
     worker_concurrency: int = 2
@@ -28,7 +28,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ROOT / ".env"), extra="ignore")
 
 
-settings = Settings(_env_file=os.environ.get("TASKER_ENV_FILE", str(ROOT / ".env")))
+settings = Settings(
+    _env_file=os.environ.get(
+        "ORCHESTRATOR_ENV_FILE", os.environ.get("TASKER_ENV_FILE", str(ROOT / ".env"))
+    )
+)
 
 
 def load(name):

@@ -1,6 +1,6 @@
 # Collector reports and execution
 
-The master schedules and decides retries. The worker launches the script, enforces its timeout, captures logs and reports the attempt. The collector retrieves, transforms and delivers business data to Backup-Hub or another destination. Tasker stores the execution report, not those datasets.
+The master schedules and decides retries. The worker launches the script, enforces its timeout, captures logs and reports the attempt. The collector retrieves, transforms and delivers business data to Backup-Hub or another destination. Backup Orchestrator stores the execution report, not those datasets.
 
 ## Standard collector report
 
@@ -24,7 +24,7 @@ All collectors use this base object:
 
 Return this object as the collector report. Python collectors implement `collect(context)` and return a dictionary (`None` for JSON null). Command collectors write exactly one JSON object to stdout and progress logs to stderr. Do not print debug messages or business datasets to stdout.
 
-Only `status` and `summary` are required by validation. The timestamp, counters, details and error above are the recommended contract. Do not return `period_start`, `period_end`, task/worker/host identifiers, attempt number, execution start/end or duration: Tasker already has or measures them. `collected_at` describes when data was collected, rather than which period it covers; if omitted it defaults to report validation time.
+Only `status` and `summary` are required by validation. The timestamp, counters, details and error above are the recommended contract. Do not return `period_start`, `period_end`, task/worker/host identifiers, attempt number, execution start/end or duration: Backup Orchestrator already has or measures them. `collected_at` describes when data was collected, rather than which period it covers; if omitted it defaults to report validation time.
 
 ## Command collectors
 
@@ -62,7 +62,7 @@ The period comes from the assigned task, including historical retries. No manual
 
 `command` is a fixed executable/argument list. `context_args` maps option names to required task fields; `parameter_args` maps option names to merged parameter keys. Only locally mapped parameters become options. Optional `defaults` supplies parameter defaults, and `required_parameters` rejects missing values before launch. True adds a boolean flag, false/null omits it; strings/numbers become `--option=value`. Nested objects/lists are rejected. Values are passed directly as argv without a shell. Dashboard parameters cannot replace the executable or the task's host/period mappings. Keep credentials in the worker environment or the collector's own configuration, not command arguments.
 
-By default, commands output the standard Tasker report above (`report_format: tasker`). The shipped `backup_collector` alias instead accepts the native backup-collector JSON (`report_format: backup_collector`), for example:
+By default, commands output the standard Backup Orchestrator report above (`report_format: tasker`). The shipped `backup_collector` alias instead accepts the native backup-collector JSON (`report_format: backup_collector`), for example:
 
 ```json
 {
@@ -81,11 +81,11 @@ By default, commands output the standard Tasker report above (`report_format: ta
 }
 ```
 
-Tasker uses **only the top-level final status** for the business outcome. It accepts case-insensitive `success`, `failure` (also `failed`), `unknown` and `timeout`. The collector owns collection, delivery, create/update decisions and destination selection, including console/OpenSearch/other outputs. Tasker neither checks nested statuses nor requires a delivery destination. It does not construct or configure the collector's output pipeline.
+Backup Orchestrator uses **only the top-level final status** for the business outcome. It accepts case-insensitive `success`, `failure` (also `failed`), `unknown` and `timeout`. The collector owns collection, delivery, create/update decisions and destination selection, including console/OpenSearch/other outputs. Backup Orchestrator neither checks nested statuses nor requires a delivery destination. It does not construct or configure the collector's output pipeline.
 
-The original object is preserved under `details.backup_collector`, including extra diagnostics and future fields within the existing size limit. `summary` is optional; otherwise the worker generates a neutral summary from the declared status. `collection.collected` is copied into the generic collected counter (or explicit top-level `records_collected`). `records_sent` is copied only when explicitly reported; otherwise its generic display defaults to 0, which does not prove failed delivery. Tasker never computes it from created/updated/noop/displayed. Native errors remain in the original report, visible in Details. Optional top-level `error` is a concise string; optional `collected_at` must include a timezone. If absent, the report timestamp is generated locally.
+The original object is preserved under `details.backup_collector`, including extra diagnostics and future fields within the existing size limit. `summary` is optional; otherwise the worker generates a neutral summary from the declared status. `collection.collected` is copied into the generic collected counter (or explicit top-level `records_collected`). `records_sent` is copied only when explicitly reported; otherwise its generic display defaults to 0, which does not prove failed delivery. Backup Orchestrator never computes it from created/updated/noop/displayed. Native errors remain in the original report, visible in Details. Optional top-level `error` is a concise string; optional `collected_at` must include a timezone. If absent, the report timestamp is generated locally.
 
-No period or Tasker identity fields are required in the native response. Tasker attaches the assigned period and identity. The collector's own duration stays in the original object; the worker measures execution duration separately. Python and other command collectors keep their existing Tasker format.
+No period or Backup Orchestrator identity fields are required in the native response. Backup Orchestrator attaches the assigned period and identity. The collector's own duration stays in the original object; the worker measures execution duration separately. Python and other command collectors keep their existing Backup Orchestrator format.
 
 Process health is still checked independently of the declared business outcome. Return exit code 0 for success. A valid failure report is retained even with a nonzero exit code; `SUCCESS` with a nonzero exit becomes `FAILURE`. Missing/malformed JSON with exit code 0 becomes `UNKNOWN`; a nonzero exit without a valid report becomes `FAILURE`. Exceeding the timeout kills the process group and produces `TIMEOUT`. The existing report/log size limits apply. Installations without `backup-collector` can still run the `fake` Python alias. Restart already-running workers after updating their Python code.
 
@@ -93,9 +93,9 @@ Python scripts remain supported: install them under `collectors/` and map an ali
 
 `collected_at` includes a timezone. `records_collected` and `records_sent` are nonnegative counters; `error` is null on success or an error message. `details` is a small JSON object; collection/delivery/reference are suggested keys and may vary by collector. No business dataset belongs in the report.
 
-The worker measures execution duration and fills missing report timestamps. The schema supplies defaults for omitted counters/details/error, but the complete object above is the recommended collector contract. Attempt identity, start/end, host, worker and requested period are execution metadata added by Tasker; they are not additional fields the collector must generate. Progress messages printed by the script appear in the attempt logs.
+The worker measures execution duration and fills missing report timestamps. The schema supplies defaults for omitted counters/details/error, but the complete object above is the recommended collector contract. Attempt identity, start/end, host, worker and requested period are execution metadata added by Backup Orchestrator; they are not additional fields the collector must generate. Progress messages printed by the script appear in the attempt logs.
 
-## Report stored by Tasker
+## Report stored by Backup Orchestrator
 
 ```json
 {
@@ -125,7 +125,7 @@ For master-detected failures without a worker report, the master supplies the av
 
 ## Final report statuses
 
-| Status | Meaning | Tasker behavior |
+| Status | Meaning | Backup Orchestrator behavior |
 | --- | --- | --- |
 | `SUCCESS` | All required work, including delivery, is confirmed complete | Attempt succeeds; no retry |
 | `FAILURE` | Collection, delivery or script execution failed | Attempt fails; retries according to the configured budget |
@@ -134,7 +134,7 @@ For master-detected failures without a worker report, the master supplies the av
 
 Use these exact uppercase values. `OK` and `KO` are not accepted. A successful fetch does not mean `SUCCESS` when required delivery failed. Use `error` for the error message and `details` for small diagnostic fields such as stage, reason or external reference.
 
-Tasker scheduling states are distinct from the report: `PENDING`, `RUNNING`, `SCHEDULED`, `DISABLED` and `MISSING` are not final collector report statuses. Internally, unsuccessful attempts use `FAILED` (or `TIMEOUT`/`WORKER_OFFLINE`); the original report retains `FAILURE` or `UNKNOWN`. A collection period may return to `PENDING` while retrying.
+Backup Orchestrator scheduling states are distinct from the report: `PENDING`, `RUNNING`, `SCHEDULED`, `DISABLED` and `MISSING` are not final collector report statuses. Internally, unsuccessful attempts use `FAILED` (or `TIMEOUT`/`WORKER_OFFLINE`); the original report retains `FAILURE` or `UNKNOWN`. A collection period may return to `PENDING` while retrying.
 
 A timeout or disconnection cannot prove that no data was delivered. Collectors must make repeated delivery safe, for example using destination-side deduplication keyed by host, collector and requested period.
 
@@ -142,7 +142,7 @@ A timeout or disconnection cannot prove that no data was delivered. Collectors m
 
 The attempt page shows the report status, summary, collection timestamp, execution dates, attempt number, duration, counters, error, expandable details, full JSON report and latest script logs. Failed-attempt logs open automatically.
 
-`details` is a JSON object limited to 16 KB; the entire report is limited to 64 KB. Summary and error messages are limited to 2,000 characters. Extra top-level fields such as `data` are rejected. Do not return jobs, images or other business datasets to Tasker.
+`details` is a JSON object limited to 16 KB; the entire report is limited to 64 KB. Summary and error messages are limited to 2,000 characters. Extra top-level fields such as `data` are rejected. Do not return jobs, images or other business datasets to Backup Orchestrator.
 
 For command collectors, use stderr for progress and reserve stdout for the JSON report. For Python `collect(context)` collectors, use `print()` or Python logging for progress. The runner captures collector stdout/stderr while reserving its own stdout for the report. The worker retains the latest approximately 16 KB; the API accepts at most 20,000 characters. Never log credentials, tokens or business datasets. Logs are retained in the database and visible to administrators; there is no automatic secret redaction.
 

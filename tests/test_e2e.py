@@ -42,7 +42,7 @@ def test_real_http_workers_and_historical_retry(tmp_path):
                 subprocess.Popen(
                     [
                         sys.executable,
-                        str(root / "tasker.py"),
+                        str(root / "run.py"),
                         "master",
                         "--config",
                         str(master_config),
@@ -76,7 +76,7 @@ def test_real_http_workers_and_historical_retry(tmp_path):
                         subprocess.Popen(
                             [
                                 sys.executable,
-                                str(root / "tasker.py"),
+                                str(root / "run.py"),
                                 "worker",
                                 "--config",
                                 str(worker_config),
@@ -199,7 +199,7 @@ def test_clean_master_file_inventory_and_env_only_worker(tmp_path):
                 subprocess.Popen(
                     [
                         sys.executable,
-                        str(root / "tasker.py"),
+                        str(root / "run.py"),
                         "master",
                         "--config",
                         str(master_config),
@@ -320,7 +320,7 @@ def test_clean_master_file_inventory_and_env_only_worker(tmp_path):
                     subprocess.Popen(
                         [
                             sys.executable,
-                            str(root / "tasker.py"),
+                            str(root / "run.py"),
                             "worker",
                             "--config",
                             str(worker_config),

@@ -1,6 +1,6 @@
 # Red Hat installation
 
-Tasker runs as a standard systemd service. Each machine has one checkout under `/data/tasker`, one manually configured role-specific environment file, and its own Python environment. The Mac is used for development.
+Backup Orchestrator runs as a standard systemd service. Each machine has one checkout under `/data/backup-orchestrator/app`, one manually configured role-specific environment file, and its own Python environment. The Mac is used for development.
 
 ## 1. Prepare the machine and configuration
 
@@ -9,8 +9,8 @@ Requirements: Linux/systemd, Python 3.11 or 3.12 with pip/venv, Git, an approved
 Clone the same tested commit on the master and each satellite:
 
 ```bash
-git clone git@github.com:kernel47/backup-orchestrator.git /data/tasker
-cd /data/tasker
+git clone git@github.com:kernel47/backup-orchestrator.git /data/backup-orchestrator/app
+cd /data/backup-orchestrator/app
 ```
 
 Use an approved source archive if SSH access is unavailable. When copying a Mac checkout, exclude `.venv`, `.env`, `.env.worker`, `var/` and the local inventory export.
@@ -18,7 +18,7 @@ Use an approved source archive if SSH access is unavailable. When copying a Mac 
 On a new machine, an administrator can create the service account if needed:
 
 ```bash
-sudo useradd --system --no-create-home --home-dir /data/tasker --shell /sbin/nologin tasker
+sudo useradd --system --no-create-home --home-dir /data/backup-orchestrator/app --shell /sbin/nologin backup-orchestrator
 ```
 
 Copy **only the configuration for that machine's role**, then edit it:
@@ -42,7 +42,7 @@ Configure `AUTH_USERNAME`, `AUTH_PASSWORD`, `ADMIN_TOKEN` and `SESSION_SECRET` w
 Worker `.env.worker`: use the ID and one-time token provisioned in **Configuration → Satellites** on the master:
 
 ```dotenv
-MASTER_URL=https://tasker.example.internal
+MASTER_URL=https://backup-orchestrator.example.internal
 WORKER_ID=EMEA-SAT-1
 WORKER_TOKEN=REPLACE_WITH_THE_PROVISIONED_TOKEN
 WORKER_CONCURRENCY=2
@@ -54,7 +54,7 @@ A satellite belongs to one zone; the master controls its allowed scopes and capa
 Grant the service account access to its application files:
 
 ```bash
-sudo chown -R tasker:tasker /data/tasker
+sudo chown -R backup-orchestrator:backup-orchestrator /data/backup-orchestrator/app
 # Restrict the applicable configuration file:
 sudo chmod 600 .env
 # On a satellite instead: sudo chmod 600 .env.worker
@@ -65,34 +65,36 @@ sudo chmod 600 .env
 Only one installation command is needed on each machine:
 
 ```bash
-cd /data/tasker
-sudo PYTHON=python3.12 ./install.sh master --user tasker
+cd /data/backup-orchestrator/app
+sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator
 # On each satellite instead:
-# sudo PYTHON=python3.12 ./install.sh worker --user tasker
+# sudo PYTHON=python3.12 ./install.sh worker --user backup-orchestrator
 ```
 
 The installer creates `.venv` if needed, installs `requirements.txt` as the service account, installs the selected unit from `systemd/`, reloads systemd, and enables/restarts the service. It checks for the manually configured file and leaves it untouched. Python 3.11 can be selected instead.
 
-The unit runs `.venv/bin/python tasker.py master` or `.venv/bin/python tasker.py worker`, with the project as its working directory. The master reads `.env`; the worker reads `.env.worker`. There are no separate configure/run/start wrapper scripts.
+When upgrading from the previous service names, the installer disables and stops the matching `tasker-master` or `tasker-worker` service before starting the new one. Keep the existing environment file and database. You can retain an existing service account by passing its name with `--user`.
+
+The unit runs `.venv/bin/python run.py master` or `.venv/bin/python run.py worker`, with the project as its working directory. The master reads `.env`; the worker reads `.env.worker`. There are no separate configure/run/start wrapper scripts.
 
 ```bash
-sudo systemctl status tasker-master
-sudo systemctl restart tasker-master
-sudo systemctl stop tasker-master
-sudo journalctl -u tasker-master -n 100 --no-pager
+sudo systemctl status backup-orchestrator-master
+sudo systemctl restart backup-orchestrator-master
+sudo systemctl stop backup-orchestrator-master
+sudo journalctl -u backup-orchestrator-master -n 100 --no-pager
 curl --fail http://127.0.0.1:8000/health
 ```
 
-Use `tasker-worker` on satellites. Use one master process with the SQLite scheduler. Stop a foreground instance before starting the corresponding service.
+Use `backup-orchestrator-worker` on satellites. Use one master process with the SQLite scheduler. Stop a foreground instance before starting the corresponding service.
 
 ## 3. Local storage and network access
 
 ```text
-/data/tasker/
+/data/backup-orchestrator/app/
 ├── .env                         # Master configuration
 ├── .env.worker                  # Satellite configuration, on worker machines
 ├── .venv/
-├── tasker.py                    # Common service/foreground entry point
+├── run.py                       # Common service/foreground entry point
 ├── install.sh                   # Common service installer
 ├── systemd/                     # Supplied master and worker units
 ├── config/worker_scripts.yaml
@@ -103,29 +105,29 @@ Use `tasker-worker` on satellites. Use one master process with the SQLite schedu
 └── tools/backup-collectors/      # Separately installed external tool
 ```
 
-`var/` is inside the project, not the system `/var`. With the supplied working directory, `sqlite:///var/orchestrator.db` resolves to `/data/tasker/var/orchestrator.db`. The equivalent absolute setting is `sqlite:////data/tasker/var/orchestrator.db`.
+`var/` is inside the project, not the system `/var`. With the supplied working directory, `sqlite:///var/orchestrator.db` resolves to `/data/backup-orchestrator/app/var/orchestrator.db`. The equivalent absolute setting is `sqlite:////data/backup-orchestrator/app/var/orchestrator.db`.
 
-Only the installed service definition is stored under `/etc/systemd/system`. Service output is captured in the normal journal. The checkout, Python environments, configuration and database stay under `/data/tasker`.
+Only the installed service definition is stored under `/etc/systemd/system`. Service output is captured in the normal journal. The checkout, Python environments, configuration and database stay under `/data/backup-orchestrator/app`.
 
 `127.0.0.1:8000` is local to the master host. A reverse proxy or Avi endpoint can expose it if the backend is reachable from that proxy. A remote Avi appliance cannot reach the master's loopback interface directly: bind to an appropriate private interface in `.env` and restrict access when using that deployment. Workers initiate outbound HTTP(S); they need no incoming worker port. For remote access use HTTPS and a valid certificate; keep SELinux and certificate validation enabled.
 
 ## 4. Add backup-collector
 
-Install your approved external collector under `/data/tasker/tools/backup-collectors`, using its own environment. Tasker does not distribute that application. If it is pip-installable:
+Install your approved external collector under `/data/backup-orchestrator/app/tools/backup-collectors`, using its own environment. Backup Orchestrator does not distribute that application. If it is pip-installable:
 
 ```bash
-cd /data/tasker/tools/backup-collectors
+cd /data/backup-orchestrator/app/tools/backup-collectors
 python3.12 -m venv .venv
 .venv/bin/pip install .
 ```
 
-Configure the external tool's NetBackup/API credentials and destinations using its own mechanism. It must run as the worker account from `/data/tasker`, without relying on a manually activated shell. Arbitrary keys in `.env.worker` are not automatically exported into external command environments.
+Configure the external tool's NetBackup/API credentials and destinations using its own mechanism. It must run as the worker account from `/data/backup-orchestrator/app`, without relying on a manually activated shell. Arbitrary keys in `.env.worker` are not automatically exported into external command environments.
 
 On each eligible satellite, configure the already supplied alias in `config/worker_scripts.yaml`:
 
 ```yaml
 backup_collector:
-  command: [/data/tasker/tools/backup-collectors/.venv/bin/backup-collector, collect]
+  command: [/data/backup-orchestrator/app/tools/backup-collectors/.venv/bin/backup-collector, collect]
   report_format: backup_collector
   context_args:
     asset: host
@@ -143,19 +145,19 @@ Keep the same alias on the master for the collector selector. Adjust option name
 
 Configure zones, satellites, inventory, host groups and collectors through the dashboard. The database owns these objects; configuration examples never create demo infrastructure. Copy `inventory/hosts.example.json` to the ignored `inventory/hosts.json` if a file source is needed.
 
-For an initial Jobs pilot, select `backup_collector`, parameters `{"scope":"netbackup","type":"jobs"}`, timeout 300 seconds and no automatic retries. Test one approved host/period and inspect both the Tasker report and destination data. Test a failure and repeat delivery before enabling schedules. Policies and Images use the types supported by your tool. Daily-local schedules use the satellite timezone.
+For an initial Jobs pilot, select `backup_collector`, parameters `{"scope":"netbackup","type":"jobs"}`, timeout 300 seconds and no automatic retries. Test one approved host/period and inspect both the Backup Orchestrator report and destination data. Test a failure and repeat delivery before enabling schedules. Policies and Images use the types supported by your tool. Daily-local schedules use the satellite timezone.
 
 ## Foreground troubleshooting or Mac development
 
 Prepare dependencies manually outside systemd:
 
 ```bash
-cd /data/tasker
+cd /data/backup-orchestrator/app
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python tasker.py master
-# In another terminal: .venv/bin/python tasker.py worker
-# Another configuration: .venv/bin/python tasker.py worker --config /path/to/worker.env
+.venv/bin/python run.py master
+# In another terminal: .venv/bin/python run.py worker
+# Another configuration: .venv/bin/python run.py worker --config /path/to/worker.env
 ```
 
 Configure `.env` / `.env.worker` first. Ctrl+C stops the foreground process. This is the same application entry point used by the two services.

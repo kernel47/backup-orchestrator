@@ -22,7 +22,7 @@ def main():
         parser.error(
             f"Configuration missing: {path}. Copy the matching .env example and configure it first."
         )
-    os.environ["TASKER_ENV_FILE"] = str(path.resolve())
+    os.environ["ORCHESTRATOR_ENV_FILE"] = str(path.resolve())
     os.chdir(ROOT)
     if args.role == "master":
         import uvicorn

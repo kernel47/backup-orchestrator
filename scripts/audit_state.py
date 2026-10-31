@@ -1,4 +1,4 @@
-"""Read-only consistency audit for the currently configured Tasker database."""
+"""Read-only consistency audit for the configured Backup Orchestrator database."""
 
 import json
 from collections import Counter, defaultdict
