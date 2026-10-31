@@ -1,35 +1,17 @@
-# Master and satellite installation
+# Master and satellites
 
-For a complete Red Hat setup with backup-collector and systemd examples, see [the installation guide](installation-redhat.md).
+Install the same checkout on each machine. The master uses `.env`; each satellite uses `.env.worker`. Configure those files from the supplied examples before installation, using the machine's own settings and credentials.
 
-Use Python 3.11/3.12 and a copy of the repository on each machine. `.env` belongs to that machine; do not share the master admin/session secrets with workers.
-
-## Master
+Two standard units are provided in `systemd/`. The only installer is `install.sh`:
 
 ```bash
-PYTHON=python3.12 ./scripts/install_master.sh
-./scripts/start_master.sh
+sudo ./install.sh master --user tasker
+sudo ./install.sh worker --user tasker
 ```
 
-Installation creates a venv and random secrets if `.env` does not exist. Existing `.env` and database contents are preserved. See `.env.master.example`: DATABASE_URL, MASTER_HOST, MASTER_PORT, AUTH_USERNAME, AUTH_PASSWORD, ADMIN_TOKEN, SESSION_SECRET and scheduler/lease settings. A fresh master has no demo hosts or collectors.
+Run the first on the master, the second on each satellite. The account must exist and have read/write access to the checkout. Configuration is never generated or overwritten. Use `systemctl` and `journalctl` to operate the selected service. Detailed instructions, network access and external command integration are in [the Red Hat guide](installation-redhat.md).
 
-The launcher runs one uvicorn process in the foreground on `127.0.0.1:8000` by default. For a persistent Red Hat service, after installation/configuration run `sudo ./scripts/install_service.sh master --user tasker --start`. The account must exist and have access to the project. Stop any foreground master first. Use `systemctl status tasker-master` and `journalctl -u tasker-master` for diagnostics. Do not use multiple uvicorn workers or multiple masters on the same SQLite database.
-
-## Satellite
-
-On the master, configure zones, then provision a satellite under Configuration → Satellites. Choose its ID, one zone, supported scopes and capacity. Copy its one-time token.
-
-On the satellite:
-
-```bash
-PYTHON=python3.12 ./scripts/install_worker.sh
-# Edit .env.worker using .env.worker.example.
-./scripts/start_worker.sh
-```
-
-Required: MASTER_URL, WORKER_ID, WORKER_TOKEN. Optional: WORKER_CONCURRENCY, POLL_SECONDS and LEASE_SECONDS. The master enforces capacity and authorization independently from local settings. Workers use outbound HTTP and need no listening port or local inventory YAML. Install the Python scripts or command executables and the config/worker_scripts.yaml aliases used on that worker. See docs/scripts.md for command arguments and native backup-collector reports.
-
-For remote deployment, use HTTPS and appropriate service-account/network controls. Linux service deployment has not been validated by this change. Provisioned worker tokens are stored as hashes on the master.
+For foreground troubleshooting use `.venv/bin/python tasker.py master` or `.venv/bin/python tasker.py worker`. Stop with Ctrl+C; do not run a duplicate process alongside systemd. The single entry point accepts `--config /path/to/file.env` if a different configuration is needed.
 
 ## Worker-local clocks and daily execution
 

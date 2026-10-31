@@ -4,40 +4,37 @@ A generic collector orchestrator: FastAPI master, HTTP workers, host inventory, 
 
 ## Install and start
 
-The Red Hat layout keeps the project and runtime data under `/data/tasker`; the SQLite database is `/data/tasker/var/orchestrator.db`, not a file under the system `/var`. For Red Hat master/worker installation, the backup-collector integration and systemd examples, see [the Red Hat installation guide](docs/installation-redhat.md).
+Python 3.11 or 3.12 is required. The standard Red Hat deployment consists of two supplied units, `systemd/tasker-master.service` and `systemd/tasker-worker.service`, and one installer: `install.sh`.
 
-Python 3.11 or 3.12 is required.
-
-```bash
-PYTHON=python3.12 ./scripts/install_master.sh
-./scripts/start_master.sh
-```
-
-The master listens on `127.0.0.1:8000` by default. On Red Hat, install it as a persistent service after configuring `.env`: `sudo ./scripts/install_service.sh master --user tasker --start` (existing service account with access to the checkout). Foreground launch and systemd are alternative ways to run the same master; use only one.
-
-For local macOS development:
+Configure the machine before starting it:
 
 ```bash
-PYTHON=python3.12 ./scripts/install_mac.sh
-./scripts/start_local.sh
-./scripts/stop_local.sh
+cp .env.master.example .env        # Master machine: edit settings and replace placeholder secrets.
+# On a satellite instead: cp .env.worker.example .env.worker
 ```
 
-Local startup launches only the master. Neither installation nor startup imports configuration or creates workers. The master uses one uvicorn process and SQLite; do not run multiple master processes against the same database.
-
-Sign in using `AUTH_USERNAME` and `AUTH_PASSWORD` in the master `.env`. Installation generates random secrets. Restart after changing credentials; existing browser sessions become invalid. `ADMIN_TOKEN` is the administrator API bearer token. Keep `.env` private and use HTTPS for remote access.
-
-On each satellite:
+Using an existing service account with access to the checkout:
 
 ```bash
-PYTHON=python3.12 ./scripts/install_worker.sh
-# Configure MASTER_URL, WORKER_ID and WORKER_TOKEN in .env.worker.
-./scripts/start_worker.sh
+sudo ./install.sh master --user tasker
+# On each satellite: sudo ./install.sh worker --user tasker
 ```
 
-Create its zone and scope, then register the satellite in Configuration → Satellites. Copy the one-time token into the worker's `.env.worker`. A satellite belongs to exactly one zone, uses outbound HTTP and needs no inventory file or master credentials.
+The installer reads `requirements.txt` and prepares runtime dependencies in `.venv`, installs the selected unit and enables/restarts it. It never generates or overwrites your configuration. Set `PYTHON=python3.12` when needed, for example `sudo PYTHON=python3.12 ./install.sh master --user tasker`.
 
-The master reads `.env`; `start_worker.sh` reads `.env.worker` independently, including when both run on the same Mac. Pass another file as the first argument to start another worker: `./scripts/start_worker.sh /path/to/another-worker.env`. Worker secret files must not be committed.
+Use normal service commands: `systemctl status tasker-master`, `systemctl restart tasker-master` and `journalctl -u tasker-master`. The default master bind is `127.0.0.1:8000`. Workers use outbound HTTP and a provisioned individual token; each belongs to one zone. Copy neither the master database nor its credentials to a satellite. Use one master process for the SQLite scheduler.
+
+For Mac development or foreground troubleshooting, use the same entry point as systemd:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python tasker.py master
+# In another terminal: .venv/bin/python tasker.py worker
+# Alternate configuration: .venv/bin/python tasker.py worker --config /path/to/worker.env
+```
+
+Stop foreground processes with Ctrl+C. Do not launch a second master while the service is running. The master reads `.env`; the worker reads `.env.worker`. Existing machine secrets and databases are preserved. See [the Red Hat installation guide](docs/installation-redhat.md) for network access, backup-collector and pilot checks.
 
 ## Set up an empty workspace
 
@@ -97,14 +94,20 @@ Only three external inputs remain:
 
 | Directory | Responsibility |
 | --- | --- |
-| `orchestrator/` | FastAPI routes, authentication, domain services, persistence and scheduling |
+| `tasker.py`, `install.sh`, `systemd/` | Service/foreground entry point, installer and service units |
+| `requirements.txt`, `requirements-dev.txt` | Tested runtime dependencies and optional development tools |
+| `orchestrator/main.py` | Application assembly, health and scheduler lifecycle |
+| `orchestrator/*_api.py` | Configuration, inventory, scheduling and execution APIs |
+| `orchestrator/pages.py`, `management_views.py`, `history_view.py` | HTML routing and focused page rendering |
+| `orchestrator/middleware.py`, `navigation.py`, `security.py` | Workspace isolation, saved filters and access checks |
+| `orchestrator/service.py`, `scheduling.py` | Execution domain and worker-local schedule calculations |
 | `orchestrator/inventory_service.py` | Read host files, preview differences and apply changes |
 | `orchestrator/templates/`, `orchestrator/static/` | Dashboard interface |
 | `worker/` | Poll tasks, execute allowlisted scripts and report results |
 | `collectors/fake.py` | Only retained fake implementation: success, failure, timeout and sample data |
 | `inventory/` | Static or externally regenerated host export |
 | `config/` | Collector script allowlist only |
-| `scripts/` | Installation, lifecycle, inventory sync and audits |
+| `scripts/` | Inventory sync, backups, retention, user administration, audits and legacy schedule migration |
 | `tests/fixtures/` | Isolated test data; never imported by normal installation/startup |
 | `var/` | Local database, logs and backups; ignored by Git |
 
@@ -143,7 +146,7 @@ Overview, Collectors, Runs & history and attempt details use in-place navigation
 
 ## Zone workspaces and daily monitoring
 
-Select the zone using the workspace selector at the bottom of the sidebar. Overview, collectors, hosts, groups, schedules, sources, satellites and history are scoped to it. New objects inherit that zone. No zone means the first-zone setup screen. The last selected zone is remembered; each tab also carries its own workspace in links and fetch headers. Switching zones opens Overview and drops object/filter IDs from the previous zone.
+Select the zone using the workspace selector at the bottom of the sidebar. Overview, collectors, hosts, groups, schedules, sources, satellites and history are scoped to it. New objects inherit that zone. No zone means the first-zone setup screen. The last selected zone is remembered; clean browser paths include the workspace, for example `/w/EMEA/collectors`. Each tab also sends its workspace header for API calls. Switching zones opens Overview and drops object/filter IDs from the previous zone.
 
 Collectors, groups, schedules and sources have persisted zone ownership. A group cannot span zones; a schedule cannot target a collector/group in another zone. Scripts and scope categories are shared, while collector configuration is per zone. System bearer-token integrations may enumerate all zones; specify `X-Tasker-Zone: EMEA` for scoped reads/writes. Normal browser users cannot bypass zone filtering with an object ID. IDs for hosts/satellites remain globally unique; use qualified IDs. Collector names may repeat, and conflicting new collector IDs get a zone prefix.
 
@@ -184,3 +187,26 @@ SQLite reports and attempt metadata are retained; no automatic history purge is 
 ```
 
 Backups are mode 0600 and include configuration, account hashes and history. Restore requires stopping the master and restoring a verified snapshot to DATABASE_URL; do not replace a running SQLite database. Restore drills never overwrite the master. Set up recurring backups and external monitoring of `/health` in your deployment environment. Satellite availability, failed/missing collections and overdue hosts are visible in Overview; external email/chat notifications need a separately configured destination.
+
+## In-app technical documentation
+
+Documentation has two pages. **Live architecture** shows the selected workspace's actual registrations, collector and asset counts, plus worker heartbeat metadata. Its HTML is in `orchestrator/templates/live_architecture.html` and it uses the operational live controls. **Technical architecture** explains a theoretical vertical deployment with a master, three example zones and two satellites per zone, then worker processes, generic collectors and asset targets. Its static HTML is in `orchestrator/templates/technical_architecture.html`; it never creates example infrastructure or polls runtime state. Both pages are scope-independent and available before initial zone setup. Edit their templates and CSS to evolve the diagrams.
+
+The worker registry combines master-side registration with safe metadata sent in authenticated heartbeats: hostname, OS, Python version, master endpoint origin, local concurrency and availability of allowlisted collector executables. The master never reads remote `.env` files or receives their credentials. Metadata is refreshed locally every minute and sent with heartbeats. Up/Down is based on heartbeat age; executable detection does not validate API credentials or target reachability. Older workers remain compatible and show metadata as not reported until updated and restarted.
+
+## Browser navigation and saved filters
+
+HTML pages have clean routes such as `/w/EMEA/collectors`, `/w/EMEA/runs` and `/w/EMEA/configuration/collectors/<id>/edit`. Filters and pagination are saved in HttpOnly, SameSite cookies per workspace and page. Browser history keeps prior selections internally so Back/Forward and live refresh work without adding filters to the address bar. Invalid or deleted saved filter values fall back to valid defaults. Object IDs remain in detail paths, and authorization is always enforced on the server. Old query-based HTML links and API filter parameters remain supported.
+
+## Development checks
+
+Runtime dependencies are pinned in `requirements.txt`; packaging reads the same file. Development tools are separate in `requirements-dev.txt`. Both services run the checkout directly and do not require an editable package installation. Keep migrations: they upgrade existing databases without discarding configuration or history.
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/python -m pytest -q
+```
+
+Python uses four-space indentation and separate statements/imports. JavaScript uses Prettier formatting; if Node is available, run `npx --yes prettier@3.6.2 --check "orchestrator/static/*.js"`. Node and the development tools are not required to run either service.

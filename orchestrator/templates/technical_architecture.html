@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% macro arrow(vertical=false,both=false) %}<svg class="model-arrow {{'vertical' if vertical}}" viewBox="0 0 32 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h26m-5-5 5 5-5 5"/>{% if both %}<path d="m8 3-5 5 5 5"/>{% endif %}</svg>{% endmacro %}
+{% block title %}Technical architecture · Tasker{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">DOCUMENTATION · DEPLOYMENT MODEL</div><h1>Technical architecture</h1><p>One master, multiple zones, distributed collection.</p></div><a class="button" href="/?view=documentation">Live architecture ↗</a></div>
+<section class="panel theory-panel" aria-label="Theoretical multi-zone architecture">
+<!-- Static HTML diagram; examples are independent of the live configuration. -->
+<div class="theory-topology">
+<div class="theory-master"><span class="model-label">CONTROL PLANE</span><h2>Tasker master</h2><p>Dashboard · API · Scheduler</p></div>
+<div class="theory-transport">{{arrow(vertical=true,both=true)}}<span>Workers connect · tasks & reports</span></div>
+<div class="theory-zones">{% for zone in ['EMEA','APAC','AMER'] %}<section class="theory-zone" aria-label="Example zone {{zone}}"><header><span class="model-label">ZONE</span><h3>{{zone}}</h3></header><div class="model-satellites">{% for number in [1,2] %}<article class="theory-satellite"><h4><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>{{zone}}-SAT-{{number}}</h4><div class="model-execution"><span class="model-worker">Worker</span>{{arrow()}}<span class="model-collector">Collector</span></div></article>{% endfor %}</div><div class="model-targets">{{arrow(vertical=true)}}<div><strong>Assets</strong><small>Selected by scope & host group</small></div></div></section>{% endfor %}</div>
+<div class="model-flows"><div><span class="data-path-tag">DATA</span><strong>Collector</strong>{{arrow()}}<span>Configured destination</span></div><div><span class="model-report-tag">REPORT</span><strong>Worker</strong>{{arrow()}}<span>Tasker master</span></div></div>
+</div>
+<dl class="model-legend"><div><dt>Master</dt><dd>Plans and tracks tasks.</dd></div><div><dt>Worker</dt><dd>Runs the collector on its satellite.</dd></div><div><dt>Collector</dt><dd>Queries assets and exports data.</dd></div></dl>
+</section>
+<section aria-labelledby="architecture-components"><div class="section-heading"><div><h2 id="architecture-components">What each component does</h2><p>The responsibilities stay the same when adding new regions, scopes or collection tools.</p></div></div><div class="component-grid">
+{% for number,title,description,detail in [
+('01','Master','Centralizes configuration, scheduling and visibility.','A schedule selects one collector and one or more host groups. The master resolves eligible hosts, creates one task per host and period, and tracks attempts.'),
+('02','Zone','Separates a location or operational workspace.','Zones may represent regions, sites or teams. Satellites, hosts, host groups and collector configurations belong to their zone; execution remains within that boundary.'),
+('03','Satellite','The machine on which execution takes place.','A satellite belongs to exactly one zone and can access that zone’s targets. Multiple satellites can share a zone for capacity and configured fallback routing.'),
+('04','Worker','The Tasker process running on a satellite.','It authenticates to the master, polls for tasks, reports its hostname and heartbeat, launches allowed scripts or commands, and enforces timeouts and execution capacity.'),
+('05','Collector','The script or external command that performs the work.','It receives a host, a fixed collection period and parameters. It handles retrieval, transformation and any delivery, then returns a final status and a diagnostic report.'),
+('06','Assets, scopes & groups','Define what to collect and which hosts to target.','A scope groups compatible hosts and collectors. A host can belong to several groups and be targeted by several collectors. Groups select targets; schedules define when they run.')
+] %}<article class="panel component-card"><span class="component-number">{{number}}</span><div><h3>{{title}}</h3><strong>{{description}}</strong><p>{{detail}}</p></div></article>{% endfor %}
+</div></section>
+<section class="panel architecture-rules"><div><h2>Execution and recovery</h2><p>Daily schedules use the relevant satellite’s local timezone. The master sends UTC period boundaries, and a retry keeps those same boundaries while creating a new attempt. A worker reports script status and logs; the collector determines whether its own work succeeded.</p></div><div><h2>Capacity and fallback</h2><p>A task is claimed by one eligible worker. Satellite capacity limits concurrent execution. Preferred and fallback routing can be configured per host; daily-local automatic fallback requires the same timezone. Running several workers is not a reason to execute the same task several times.</p></div></section>
+{% endblock %}

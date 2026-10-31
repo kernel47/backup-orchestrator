@@ -13,3 +13,8 @@ inventory/hosts.json
 
 # Locally installed external collectors and their private configuration.
 /tools/
+
+# Local code quality cache.
+.ruff_cache/
+build/
+dist/

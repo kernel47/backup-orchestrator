@@ -1,0 +1,11 @@
+# Runtime dependencies shared by master and workers.
+# These versions are validated together; update them with the test suite.
+fastapi==0.151.0
+uvicorn==0.54.0
+SQLAlchemy==2.1.5
+httpx==0.28.1
+pydantic-settings==2.16.0
+PyYAML==6.0.3
+Jinja2==3.1.6
+python-multipart==0.0.32
+python-dotenv==1.2.4

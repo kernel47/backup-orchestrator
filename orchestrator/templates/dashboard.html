@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_table_actions.html' import action_link,action_button %}
+{% from '_table_actions.html' import action_link %}
 {% from '_pagination.html' import pagination with context %}
 {% macro badge(status) %}<span class="badge {{status}}">
 <i>
@@ -11,11 +11,10 @@
 <div class="page-heading">
 <div>
 <div class="eyebrow">COLLECTOR OPERATIONS</div>
-<h1>{% if overview %}Overview{% elif view=='workers' %}Satellites{% elif view=='settings' %}{{'Collector configuration' if section=='collectors' else 'Inventory configuration'}}{% elif view=='runs' %}Runs & history{% elif filters.get('collector_id') %}{% for c in collectors if c.id==filters.collector_id %}{{c.name}} <span class="muted-title">/ {{c.scope}}</span>{% endfor %}{% else %}Collectors{% endif %}</h1>
-<p>{% if overview %}Track results across zones and host groups. Filter a period to investigate failures.{% elif view=='settings' %}{{'Choose scripts and execution defaults. Set targets and frequency in Schedules.' if section=='collectors' else 'Connect inventory sources, review discoveries and manage your hosts.'}}{% elif view=='runs' %}Inspect collection results, open execution details or retry a failed collection.{% elif filters.get('collector_id') %}Filter hosts and dates to inspect results and retry missing or failed collections.{% else %}Daily health of your collectors in this workspace. Select a day to investigate in History.{% endif %}</p>
+<h1>{{'Runs & history' if view=='runs' else 'Collectors'}}</h1>
+<p>{% if view=='runs' %}Inspect collection results, open execution details or retry a failed collection.{% else %}Daily health of your collectors in this workspace. Select a day to investigate in History.{% endif %}</p>
 </div></div>
 {% if scope_tabs %}{% include '_scope_tabs.html' %}{% endif %}
-{% if view not in ['workers','settings'] %}
 {% include '_monitor_filters.html' %}
 {% if view=='runs' %}{% include '_period_overview.html' %}{% endif %}
 {% if view=='collectors' %}<div class="metrics" aria-label="Collection summary">
@@ -40,7 +39,7 @@
 <small>{{counts.SCHEDULED}} planned collections</small>
 </div>
 </div>
-{% endif %}{% endif %}
+{% endif %}
 {% if view=='collectors' and not filters.get('collector_id') %}{% include '_period_overview.html' %}{% include '_collector_catalog.html' %}{% endif %}
 {% if view=='runs' %}
 {% if filters.get('collector_id') %}<div class="history-context"><strong>{% for c in collectors if c.id==filters.collector_id %}{{c.name}}{% endfor %}</strong><span>{{filters.date}}{% if selected_hour is not none %} · {{'%02d'|format(selected_hour)}}:00–{{'%02d'|format(selected_hour+1)}}:00 UTC{% endif %}</span><a class="subtle-link" href="/?view=collectors&scope={{filters.get('scope','')}}">Back to collectors</a><a class="subtle-link" href="{{request.url.remove_query_params(['collector_id','host','host_group_id','schedule_id','worker','status','start','end','hour']).include_query_params(page=1)}}">Reset filters</a></div>{% endif %}

@@ -37,6 +37,7 @@
 {% elif view=='workers' %}
 <div class="collector-grid workers-grid">{% for worker in workers %}<article class="collector-card">
 <h2>{{worker.id}}</h2>
+<p class="muted">{{worker.hostname or 'Hostname not reported yet'}}</p>
 <p>
 <span class="badge {{'SUCCESS' if worker.online else 'FAILED'}}">{{'Online' if worker.online else 'Offline'}}</span>
 </p>

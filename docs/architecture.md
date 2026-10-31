@@ -4,14 +4,21 @@ The master runs FastAPI, the Jinja dashboard, managed domain services and one em
 
 Configuration has two layers:
 
-- `.env`: service runtime, database URL, bind address, tokens, timeouts and worker identity/master URL.
+- `.env` on the master, `.env.worker` on satellites: service runtime, database URL/bind address or worker identity/master URL, credentials and timeouts.
 - SQLite: zones, provisioned satellites, inventory sources/previews, hosts, host groups, collector definitions, targeting schedules, windows and attempts.
 
 Normal startup migrates storage and preserves managed state. It does not load object configuration from YAML. Existing installations derive missing zone records from existing assignments; fresh installations remain empty. Managed objects are configured through the dashboard/API.
 
 ## Modules
 
-- `orchestrator/main.py`: orchestration endpoints, HTML views and scheduler lifecycle.
+- `tasker.py`: shared foreground/systemd entry point; `install.sh` installs the chosen unit and runtime requirements.
+- `orchestrator/main.py`: application assembly, health endpoint and scheduler lifecycle.
+- `orchestrator/catalog_api.py`: collector definitions, host/group listings and worker status.
+- `orchestrator/schedules_api.py`: recurring schedules, target resolution and group-run requests.
+- `orchestrator/execution_api.py`: collection history, retries, worker leases and reports.
+- `orchestrator/pages.py`: HTML route dispatch; `management_views.py` renders configuration/inventory/overview; `history_view.py` builds collection health and run history.
+- `orchestrator/auth_pages.py`, `security.py`, `middleware.py`: sign-in, authorization and workspace isolation.
+- `orchestrator/navigation.py`, `filters.py`, `web.py`: saved browser state, validated query filters and shared templates.
 - `orchestrator/inventory_api.py`: zone/satellite administration, source discovery, preview application and host/group lifecycle endpoints.
 - `orchestrator/inventory_service.py`: provider normalization, diff generation, ownership, optimistic concurrency and atomic apply.
 - `orchestrator/service.py`: eligibility, windows, claims, retries, immutable execution contexts and group/zone targeting.
@@ -27,7 +34,7 @@ Apply is transactional and idempotent. A changed baseline rejects stale previews
 
 ## Execution domain
 
-A collector is a reusable script, scope and defaults. A schedule selects the union of one or more groups, optional zone restrictions, a UTC interval and parameter overrides. A host may belong to many groups, but a collector/host pair may have only one enabled recurring schedule. Group overlap within one schedule is deduplicated. Scope and zone/worker authorization are always enforced.
+A collector is a reusable script, scope and defaults. A schedule selects the union of one or more groups within its zone, an interval or a daily worker-local time, and parameter overrides. A host may belong to many groups, but a collector/host pair may have only one enabled recurring schedule. Group overlap within one schedule is deduplicated. Scope and zone/worker authorization are always enforced.
 
 Workers authenticate using unique provisioned tokens; hashes are stored on the master and raw values are returned only once. Legacy shared-token compatibility remains available. Worker IDs and concurrency come from their `.env`; no inventory YAML is required on a satellite.
 
