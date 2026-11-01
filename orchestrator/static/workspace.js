@@ -27,7 +27,7 @@
     if (role === "operator") {
       document
         .querySelectorAll(
-          ".schedule-edit button,#group-schedule,.worker-policy button,[data-update-collector] button,#create-collector button,#scope-form button,#source-form button,#zone-form button,.zone-edit button,.host-group-form button",
+          ".schedule-edit button,#group-schedule,.worker-policy button,[data-update-collector] button,#create-collector button,#scope-form button,#source-form button,#zone-form button,.zone-edit button,.host-group-form button,[data-delete-source],#confirm-delete-source",
         )
         .forEach((b) => {
           b.disabled = true;
@@ -37,7 +37,7 @@
     if (role === "viewer") {
       document
         .querySelectorAll(
-          'form:not(.filters):not(.pagination-size):not(.workspace-picker):not([action="/logout"]) button,[data-plan],[data-retry-one],[data-rerun-one],#retry-selected,#rerun-selected,[data-rotate-worker],[data-host-state],[data-group-state],[data-delete-zone]',
+          'form:not(.filters):not(.pagination-size):not(.workspace-picker):not([action="/logout"]) button,[data-plan],[data-retry-one],[data-rerun-one],#retry-selected,#rerun-selected,[data-rotate-worker],[data-host-state],[data-group-state],[data-delete-zone],[data-delete-source]',
         )
         .forEach((b) => {
           b.disabled = true;

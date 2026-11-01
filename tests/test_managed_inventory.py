@@ -1,10 +1,201 @@
+import json
+
+import pytest
+from sqlalchemy import select
+
 from orchestrator import db
 from orchestrator import inventory_service as inv
 from orchestrator import service as svc
 from orchestrator.main import app
-from orchestrator.models import Host, HostGroup, Schedule
+from orchestrator.models import (
+    Host,
+    HostGroup,
+    InventorySource,
+    InventorySync,
+    Schedule,
+    Window,
+)
 from tests.client import DashboardClient as TestClient
 from tests.test_host_groups import AUTH, freeze, group
+
+
+def test_delete_source_preserves_inventory_and_history_and_expires_previews(
+    database, tmp_path
+):
+    from tests.test_core import one_window
+
+    path = tmp_path / "hosts.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hosts": [{"id": "nbu-emea-01", "zone": "EMEA", "scope": "NetBackup"}],
+            }
+        )
+    )
+    body = {"name": "Reference inventory", "config": {"path": str(path)}}
+    with TestClient(app) as client:
+        source = client.post("/api/inventory/sources", headers=AUTH, json=body).json()
+        url = f"/api/inventory/sources/{source['id']}"
+        applied = client.post(url + "/discover", headers=AUTH).json()
+        assert (
+            client.post(
+                f"/api/inventory/syncs/{applied['id']}/apply", headers=AUTH
+            ).status_code
+            == 200
+        )
+        window_id = one_window("SUCCESS")
+        pending = client.post(url + "/discover", headers=AUTH).json()
+        with db.Session() as session:
+            before = svc.dump(session.get(Host, "nbu-emea-01"))
+            groups = {
+                g.id: list(g.host_ids) for g in session.scalars(select(HostGroup))
+            }
+        page = client.get("/?view=sources").text
+        assert f'data-delete-source="{source["id"]}"' in page
+        assert 'id="delete-source-dialog"' in page
+        response = client.delete(url, headers=AUTH)
+        assert response.status_code == 200
+        assert response.json()["history_preserved"]
+        assert path.exists()
+        with db.Session() as session:
+            assert session.get(InventorySource, source["id"]) is None
+            after = svc.dump(session.get(Host, "nbu-emea-01"))
+            assert after.pop("source_id") == ""
+            before.pop("source_id")
+            assert after == before
+            assert session.get(Window, window_id).status == "SUCCESS"
+            assert {
+                g.id: list(g.host_ids) for g in session.scalars(select(HostGroup))
+            } == groups
+            assert session.get(InventorySync, applied["id"]).status == "APPLIED"
+            assert session.get(InventorySync, pending["id"]).status == "EXPIRED"
+        assert (
+            client.post(
+                f"/api/inventory/syncs/{pending['id']}/apply", headers=AUTH
+            ).status_code
+            == 409
+        )
+        replacement = client.post(
+            "/api/inventory/sources", headers=AUTH, json=body
+        ).json()
+        assert (
+            client.post(
+                f"/api/inventory/sources/{replacement['id']}/discover", headers=AUTH
+            ).status_code
+            == 200
+        )
+
+
+def test_delete_source_requires_admin_and_owning_workspace(database):
+    with TestClient(app) as client:
+        emea = {**AUTH, "X-Orchestrator-Zone": "EMEA"}
+        source = client.post(
+            "/api/inventory/sources",
+            headers=emea,
+            json={"name": "EMEA source", "config": {"path": "inventory/hosts.json"}},
+        ).json()
+        url = f"/api/inventory/sources/{source['id']}"
+        assert client.delete(url).status_code == 401
+        assert (
+            client.delete(
+                url, headers={**AUTH, "X-Orchestrator-Zone": "APAC"}
+            ).status_code
+            == 404
+        )
+        assert client.delete(url, headers=emea).status_code == 200
+        assert client.delete(url, headers=emea).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "content, expected",
+    [
+        (None, "Inventory file not found:"),
+        ('{"version":', "Invalid inventory JSON at line 1, column"),
+        ('{"hosts": []}', 'Expected {"version":1,"hosts":[...]}'),
+        (
+            json.dumps(
+                {
+                    "version": 1,
+                    "hosts": [
+                        {"id": "host-01", "parameters": {"token": "private-test-value"}}
+                    ],
+                }
+            ),
+            "Invalid inventory host field 'zone': Field required",
+        ),
+        (
+            json.dumps({"version": 1, "hosts": [{"id": "host-01", "zone": "APAC"}]}),
+            "Inventory hosts must belong to the current zone workspace",
+        ),
+        (
+            json.dumps({"version": 1, "hosts": [{"id": "host-01", "zone": "EMEA"}]}),
+            None,
+        ),
+    ],
+)
+def test_relative_inventory_path_and_discovery_errors(
+    database, tmp_path, monkeypatch, content, expected
+):
+    master = tmp_path / "master"
+    directory = master / "inventory"
+    directory.mkdir(parents=True)
+    monkeypatch.setattr(inv, "ROOT", master)
+    if content is not None:
+        (directory / "hosts.json").write_text(content)
+    headers = {**AUTH, "X-Orchestrator-Zone": "EMEA"}
+    with TestClient(app) as client:
+        source = client.post(
+            "/api/inventory/sources",
+            headers=headers,
+            json={"name": "Relative file", "config": {"path": "inventory/hosts.json"}},
+        )
+        assert source.status_code == 200
+        response = client.post(
+            f"/api/inventory/sources/{source.json()['id']}/discover", headers=headers
+        )
+        if expected is None:
+            assert response.status_code == 200, response.text
+            assert response.json()["changes"][0]["id"] == "host-01"
+        else:
+            assert response.status_code == 422
+            assert expected in response.json()["detail"]
+            assert "private-test-value" not in response.text
+
+
+@pytest.mark.parametrize(
+    "error, status, expected",
+    [
+        (
+            PermissionError(13, "Permission denied", "inventory/hosts.json"),
+            422,
+            "Check permissions for the master service account",
+        ),
+        (RuntimeError("private-test-value"), 500, "failed unexpectedly"),
+    ],
+)
+def test_discovery_reports_permission_and_internal_errors(
+    database, monkeypatch, error, status, expected
+):
+    def fail(source):
+        raise error
+
+    monkeypatch.setattr(inv, "read_source", fail)
+    with TestClient(app) as client:
+        source = client.post(
+            "/api/inventory/sources",
+            headers=AUTH,
+            json={
+                "name": "Unreadable file",
+                "config": {"path": "inventory/hosts.json"},
+            },
+        ).json()
+        response = client.post(
+            f"/api/inventory/sources/{source['id']}/discover", headers=AUTH
+        )
+        assert response.status_code == status
+        assert expected in response.json()["detail"]
+        assert "private-test-value" not in response.text
 
 
 def payload(**overrides):

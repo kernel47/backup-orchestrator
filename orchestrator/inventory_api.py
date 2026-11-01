@@ -1,11 +1,14 @@
 """Inventory administration and explicit discovery/apply endpoints."""
 
 import hashlib
+import json
+import logging
 import secrets
 from typing import Literal
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import select
 
 from . import db
@@ -265,6 +268,24 @@ def update_source(source_id: str, body: SourceInput):
     return save_source(source_id, body)
 
 
+@router.delete("/api/inventory/sources/{source_id}", dependencies=[Depends(admin)])
+def delete_source(source_id: str):
+    with db.transaction() as session:
+        source = session.get(InventorySource, source_id)
+        if not source:
+            raise HTTPException(404, "Unknown source")
+        for host in session.scalars(select(Host).where(Host.source_id == source_id)):
+            host.source_id = ""
+        for sync in session.scalars(
+            select(InventorySync).where(
+                InventorySync.source_id == source_id, InventorySync.status == "PREVIEW"
+            )
+        ):
+            sync.status = "EXPIRED"
+        session.delete(source)
+        return {"ok": True, "hosts_preserved": True, "history_preserved": True}
+
+
 def save_source(source_id, body):
     require_zone(body.zone)
     try:
@@ -291,6 +312,33 @@ def save_source(source_id, body):
         return svc.dump(source)
 
 
+def discovery_failure(error):
+    """Return an actionable message without exposing host values or tracebacks."""
+    if isinstance(error, FileNotFoundError):
+        return f"Inventory file not found: {error.filename}. Check the source path on the master."
+    if isinstance(error, PermissionError):
+        return f"Cannot read inventory file: {error.filename}. Check permissions for the master service account."
+    if isinstance(error, IsADirectoryError):
+        return "The inventory source points to a directory. Choose a JSON or YAML file."
+    if isinstance(error, json.JSONDecodeError):
+        return f"Invalid inventory JSON at line {error.lineno}, column {error.colno}: {error.msg}."
+    if isinstance(error, UnicodeError):
+        return "Invalid inventory file encoding. Save the file as UTF-8."
+    if isinstance(error, yaml.YAMLError):
+        mark = getattr(error, "problem_mark", None)
+        location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        return f"Invalid inventory YAML{location}. Check indentation and syntax."
+    if isinstance(error, ValidationError):
+        issue = error.errors(
+            include_input=False, include_context=False, include_url=False
+        )[0]
+        field = ".".join(str(part) for part in issue["loc"])
+        return f"Invalid inventory host field '{field}': {issue['msg']}."
+    if isinstance(error, ValueError):
+        return str(error)
+    return None
+
+
 @router.post(
     "/api/inventory/sources/{source_id}/discover", dependencies=[Depends(admin)]
 )
@@ -303,15 +351,17 @@ def discover(source_id: str):
     try:
         return inv.preview(source_id, inv.read_source(spec))
     except Exception as error:
-        import logging
-
+        detail = discovery_failure(error)
         logging.getLogger("inventory").warning(
-            "Discovery failed for source %s: %s", source_id, type(error).__name__
+            "Discovery failed for source %s: %s",
+            source_id,
+            detail or type(error).__name__,
         )
         raise HTTPException(
-            422,
-            "Discovery failed. Check the inventory file path and version-1 JSON/YAML format.",
-        )
+            422 if detail else 500,
+            detail
+            or "Inventory discovery failed unexpectedly. Check the master service logs.",
+        ) from None
 
 
 @router.post("/api/inventory/discover", dependencies=[Depends(admin)])

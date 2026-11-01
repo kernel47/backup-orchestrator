@@ -195,9 +195,7 @@ def apply(sync_id):
         if not sync:
             raise ValueError("Unknown inventory preview")
         if sync.status == "EXPIRED":
-            raise ValueError(
-                "Preview expired during workspace migration; discover again"
-            )
+            raise ValueError("Preview expired; discover again before applying")
         if sync.status == "APPLIED":
             return sync_dump(sync)
         if sync.payload["baseline"] != fingerprint(session):

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_pagination.html' import pagination with context %}{% block content %}
+{% extends 'base.html' %}{% from '_pagination.html' import pagination with context %}{% from '_table_actions.html' import action_button %}{% block content %}
 <div class="page-heading">
 <div>
 <div class="eyebrow">{{'INVENTORY' if view=='sources' else 'CONFIGURATION'}}</div>
@@ -98,8 +98,11 @@
 <button class="button primary">Create source</button>
 </form>
 {% for source in sources %}<section class="panel settings-intro">
+<div class="group-heading">
 <h2>{{source.name}} <span class="quiet-chip">{{source.kind}}</span>
 </h2>
+<div class="table-actions">{{action_button('Delete inventory source: '+source.name,'delete',{'data-delete-source':source.id,'data-source-name':source.name})}}</div>
+</div>
 <pre>{{source.config|tojson(indent=2)}}</pre>
 <details>
 <summary>Edit source</summary>
@@ -121,6 +124,11 @@
 </details>
 <button class="button primary" data-discover="{{source.id}}" {{'disabled' if not source.enabled}}>Discover changes</button>
 </section>{% endfor %}
+<dialog id="delete-source-dialog" aria-labelledby="delete-source-title" aria-describedby="delete-source-description">
+<div class="dialog-head"><h2 id="delete-source-title">Delete inventory source?</h2></div>
+<p id="delete-source-description">Remove <strong id="delete-source-name"></strong> from configured sources? Imported hosts, collection history and the inventory file will be kept. Pending discoveries from this source will expire.</p>
+<form method="dialog" class="form-actions"><button class="button" value="cancel">Cancel</button><button type="button" class="button" id="confirm-delete-source">Delete source</button></form>
+</dialog>
 <section class="section-heading">
 <h2>Discovery history</h2>
 </section>

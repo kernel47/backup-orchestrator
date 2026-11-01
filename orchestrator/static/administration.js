@@ -69,6 +69,28 @@ document.querySelectorAll("[data-discover]").forEach((button) =>
     ),
   ),
 );
+const deleteSourceDialog = document.querySelector("#delete-source-dialog");
+const confirmDeleteSource = document.querySelector("#confirm-delete-source");
+document.querySelectorAll("[data-delete-source]").forEach((button) => {
+  button.addEventListener("click", () => {
+    deleteSourceDialog.dataset.sourceId = button.dataset.deleteSource;
+    document.querySelector("#delete-source-name").textContent =
+      button.dataset.sourceName;
+    deleteSourceDialog.showModal();
+  });
+});
+confirmDeleteSource?.addEventListener("click", () => {
+  deleteSourceDialog.close();
+  action(
+    confirmDeleteSource,
+    "/api/inventory/sources/" +
+      encodeURIComponent(deleteSourceDialog.dataset.sourceId),
+    "DELETE",
+    {},
+    () => "Inventory source deleted. Imported hosts and history preserved.",
+    () => "/?view=sources",
+  );
+});
 document
   .querySelectorAll("[data-apply-sync]")
   .forEach((button) =>

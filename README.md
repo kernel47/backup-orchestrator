@@ -82,6 +82,8 @@ Only adapt `collect_hosts()` in `scripts/sync_inventory.py` for your API. It int
 
 Discover creates a reviewable preview of new, changed, unchanged, missing and archived hosts. Apply is atomic and rejects stale previews. Existing activation states are preserved; archived hosts are not automatically restored. The script reuses or creates a file source and prints a change summary. The dashboard also offers Discover and Apply. External tools can push the same envelope to `POST /api/inventory/discover` using the admin bearer token and an `X-Orchestrator-Zone` header.
 
+Use the delete icon in Sources & discovery to remove a configured source after confirmation. Deletion preserves the inventory file, imported hosts, groups and history; pending previews from that source expire. Hosts are detached from the removed source so a new source can manage them. The administrator API is `DELETE /api/inventory/sources/{source_id}`.
+
 ## Configuration and storage
 
 The database is the only source of truth for zones, scopes, satellites, hosts, host groups, collectors, schedules and inventory sources. Manage these objects through the dashboard or authenticated API. There are no declarative object YAML files or configuration import command.
