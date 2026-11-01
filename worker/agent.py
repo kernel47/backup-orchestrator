@@ -65,6 +65,7 @@ async def run(worker_id):
     async with httpx.AsyncClient(
         base_url=settings.master_url,
         headers={"Authorization": "Bearer " + token},
+        verify=settings.worker_verify_ssl,
         timeout=15,
     ) as http:
         body = {"worker_id": worker_id}

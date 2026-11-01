@@ -43,6 +43,7 @@ Worker `.env.worker`: use the ID and one-time token provisioned in **Configurati
 
 ```dotenv
 MASTER_URL=https://backup-orchestrator.example.internal
+WORKER_VERIFY_SSL=true
 WORKER_ID=EMEA-SAT-1
 WORKER_TOKEN=REPLACE_WITH_THE_PROVISIONED_TOKEN
 WORKER_CONCURRENCY=2

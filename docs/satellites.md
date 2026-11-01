@@ -13,6 +13,12 @@ Run the first on the master, the second on each satellite. The account must exis
 
 For foreground troubleshooting use `.venv/bin/python run.py master` or `.venv/bin/python run.py worker`. Stop with Ctrl+C; do not run a duplicate process alongside systemd. The single entry point accepts `--config /path/to/file.env` if a different configuration is needed.
 
+## HTTPS certificate verification
+
+Set `WORKER_VERIFY_SSL=true` in `.env.worker` (the default) to verify the master's HTTPS certificate for all worker requests, including heartbeat, task claims and result submission. For temporary testing with an untrusted certificate, `WORKER_VERIFY_SSL=false` disables certificate and hostname verification; the connection is then vulnerable to interception. Prefer configuring a trusted certificate or CA for production. This setting applies only to the worker's connection to the master, not to collector connections.
+
+After changing `.env.worker`, run `sudo systemctl restart backup-orchestrator-worker`.
+
 ## Worker-local clocks and daily execution
 
 Workers report an IANA timezone with each heartbeat. `WORKER_TIMEZONE=Europe/Paris` can override detection; otherwise `TZ`, `/etc/localtime` and `/etc/timezone` are checked on the worker. If none provides a valid zone, startup fails with an explicit configuration message. The worker also sets `TZ` for its Python subprocesses. Never derive timezone from a broad zone such as EMEA or AMER.
