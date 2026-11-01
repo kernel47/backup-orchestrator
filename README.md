@@ -6,6 +6,8 @@ A generic collector orchestrator: FastAPI master, HTTP workers, host inventory, 
 
 Python 3.11 or 3.12 is required. The standard Red Hat deployment consists of two supplied units, `systemd/backup-orchestrator-master.service` and `systemd/backup-orchestrator-worker.service`, and one installer: `install.sh`.
 
+The standard checkout paths are `/data/backup-orchestrator/master` on the master and `/data/backup-orchestrator/worker` on each satellite. The installer renders the selected service using its actual checkout path.
+
 Configure the machine before starting it:
 
 ```bash
@@ -20,18 +22,18 @@ sudo ./install.sh master --user backup-orchestrator
 # On each satellite: sudo ./install.sh worker --user backup-orchestrator
 ```
 
-The installer reads `requirements.txt` and prepares runtime dependencies in `.venv`, installs the selected unit and enables/restarts it. It never generates or overwrites your configuration. Set `PYTHON=python3.12` when needed, for example `sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator`.
+The installer reads `requirements.txt` and prepares runtime dependencies in `venv`, installs the selected unit and enables/restarts it. It never generates or overwrites your configuration. Set `PYTHON=python3.12` when needed, for example `sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator`.
 
 Use normal service commands: `systemctl status backup-orchestrator-master`, `systemctl restart backup-orchestrator-master` and `journalctl -u backup-orchestrator-master`. The default master bind is `127.0.0.1:8000`. Workers use outbound HTTP and a provisioned individual token; each belongs to one zone. Copy neither the master database nor its credentials to a satellite. Use one master process for the SQLite scheduler.
 
 For Mac development or foreground troubleshooting, use the same entry point as systemd:
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python run.py master
-# In another terminal: .venv/bin/python run.py worker
-# Alternate configuration: .venv/bin/python run.py worker --config /path/to/worker.env
+python3.12 -m venv venv
+venv/bin/python -m pip install -r requirements-dev.txt
+venv/bin/python run.py master
+# In another terminal: venv/bin/python run.py worker
+# Alternate configuration: venv/bin/python run.py worker --config /path/to/worker.env
 ```
 
 Stop foreground processes with Ctrl+C. Do not launch a second master while the service is running. The master reads `.env`; the worker reads `.env.worker`. Existing machine secrets and databases are preserved. See [the Red Hat installation guide](docs/installation-redhat.md) for network access, backup-collector and pilot checks.
@@ -67,13 +69,13 @@ Optional `preferred_worker` and `fallback_worker` must match the host's zone and
 
 ```bash
 # Discover changes from a static file, then review in the dashboard.
-.venv/bin/python -m scripts.sync_inventory --zone EMEA
+venv/bin/python -m scripts.sync_inventory --zone EMEA
 # Discover and apply; new hosts remain disabled until activated.
-.venv/bin/python -m scripts.sync_inventory --apply
+venv/bin/python -m scripts.sync_inventory --apply
 # Use YAML instead.
-.venv/bin/python -m scripts.sync_inventory --file inventory/hosts.yaml
+venv/bin/python -m scripts.sync_inventory --file inventory/hosts.yaml
 # After implementing collect_hosts(): refresh from your API, then discover.
-.venv/bin/python -m scripts.sync_inventory --refresh
+venv/bin/python -m scripts.sync_inventory --refresh
 ```
 
 Only adapt `collect_hosts()` in `scripts/sync_inventory.py` for your API. It intentionally contains no provider implementation. Return a list of host dictionaries; store API credentials in `.env`. A failed refresh preserves the previous file. Static lists need no Python changes. The dashboard reads files and never executes provider code.
@@ -134,8 +136,8 @@ Final report statuses are **SUCCESS**, **FAILURE**, **TIMEOUT** and **UNKNOWN**.
 ## Verification
 
 ```bash
-.venv/bin/python -m pytest -q
-.venv/bin/python -m scripts.audit_state
+venv/bin/python -m pytest -q
+venv/bin/python -m scripts.audit_state
 ```
 
 Tests use isolated databases and test-only configuration. No seeding command is shipped in `scripts/`. This V0 runs one SQLite master scheduler. Named users have zone/role permissions; no external notification delivery is configured. Trusted collectors execute with the worker service account's permissions.
@@ -163,10 +165,10 @@ Schedules is a table with Add schedule and individual detail/edit pages. New int
 The `.env` administrator and system API token retain global administration. Add named users in the database with a prompted password (scrypt hash, never plaintext):
 
 ```bash
-.venv/bin/python -m scripts.user alice --role operator --zones EMEA
-.venv/bin/python -m scripts.user bob --role viewer --zones APAC,AMER
+venv/bin/python -m scripts.user alice --role operator --zones EMEA
+venv/bin/python -m scripts.user bob --role viewer --zones APAC,AMER
 # Disable an account and invalidate its sessions.
-.venv/bin/python -m scripts.user alice --zones EMEA --disable
+venv/bin/python -m scripts.user alice --zones EMEA --disable
 ```
 
 Viewer: read allowed zones. Operator: read plus plan, retry and run collectors in allowed zones. Admin: configure objects in allowed zones. Only the global administrator manages the shared zone/scope registry. Sessions expire after 12 hours; disabling a user or changing its credentials/permissions invalidates its sessions. Configure HTTPS at your reverse proxy before exposing the master; session cookies become Secure over HTTPS. Keep the master listener private and store `.env` and backups with restricted filesystem permissions.
@@ -177,13 +179,13 @@ SQLite reports and attempt metadata are retained; no automatic history purge is 
 
 ```bash
 # Online snapshot plus restore into a temporary database and integrity check.
-.venv/bin/python -m scripts.backup --check-restore
+venv/bin/python -m scripts.backup --check-restore
 # Read-only consistency audit.
-.venv/bin/python -m scripts.audit_state
+venv/bin/python -m scripts.audit_state
 # Preview old log cleanup; reports and period/attempt metadata are preserved.
-.venv/bin/python -m scripts.retention --logs-days 30
+venv/bin/python -m scripts.retention --logs-days 30
 # Explicitly apply the same cleanup after reviewing its count and backup.
-.venv/bin/python -m scripts.retention --logs-days 30 --apply
+venv/bin/python -m scripts.retention --logs-days 30 --apply
 ```
 
 Backups are mode 0600 and include configuration, account hashes and history. Restore requires stopping the master and restoring a verified snapshot to DATABASE_URL; do not replace a running SQLite database. Restore drills never overwrite the master. Set up recurring backups and external monitoring of `/health` in your deployment environment. Satellite availability, failed/missing collections and overdue hosts are visible in Overview; external email/chat notifications need a separately configured destination.
@@ -203,10 +205,10 @@ HTML pages have clean routes such as `/w/EMEA/collectors`, `/w/EMEA/runs` and `/
 Runtime dependencies are pinned in `requirements.txt`; packaging reads the same file. Development tools are separate in `requirements-dev.txt`. Both services run the checkout directly and do not require an editable package installation. Keep migrations: they upgrade existing databases without discarding configuration or history.
 
 ```bash
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/ruff check .
-.venv/bin/ruff format --check .
-.venv/bin/python -m pytest -q
+venv/bin/python -m pip install -r requirements-dev.txt
+venv/bin/ruff check .
+venv/bin/ruff format --check .
+venv/bin/python -m pytest -q
 ```
 
 Python uses four-space indentation and separate statements/imports. JavaScript uses Prettier formatting; if Node is available, run `npx --yes prettier@3.6.2 --check "orchestrator/static/*.js"`. Node and the development tools are not required to run either service.

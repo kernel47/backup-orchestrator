@@ -1,6 +1,6 @@
 # Master and satellites
 
-Install the same checkout on each machine. The master uses `.env`; each satellite uses `.env.worker`. Configure those files from the supplied examples before installation, using the machine's own settings and credentials.
+Install the same checkout at `/data/backup-orchestrator/master` on the master and `/data/backup-orchestrator/worker` on each satellite. The master uses `.env`; each satellite uses `.env.worker`. Configure those files from the supplied examples before installation, using the machine's own settings and credentials.
 
 Two standard units are provided in `systemd/`. The only installer is `install.sh`:
 
@@ -11,7 +11,7 @@ sudo ./install.sh worker --user backup-orchestrator
 
 Run the first on the master, the second on each satellite. The account must exist and have read/write access to the checkout. Configuration is never generated or overwritten. Use `systemctl` and `journalctl` to operate the selected service. Detailed instructions, network access and external command integration are in [the Red Hat guide](installation-redhat.md).
 
-For foreground troubleshooting use `.venv/bin/python run.py master` or `.venv/bin/python run.py worker`. Stop with Ctrl+C; do not run a duplicate process alongside systemd. The single entry point accepts `--config /path/to/file.env` if a different configuration is needed.
+For foreground troubleshooting use `venv/bin/python run.py master` or `venv/bin/python run.py worker`. Stop with Ctrl+C; do not run a duplicate process alongside systemd. The single entry point accepts `--config /path/to/file.env` if a different configuration is needed.
 
 ## HTTPS certificate verification
 

@@ -11,11 +11,11 @@ def test_units_run_the_same_entrypoint_with_role_specific_configuration():
     for role in ("master", "worker"):
         unit = (ROOT / "systemd" / f"backup-orchestrator-{role}.service").read_text()
         assert (
-            f"ExecStart=/data/backup-orchestrator/app/.venv/bin/python /data/backup-orchestrator/app/run.py {role}"
+            f"ExecStart=/data/backup-orchestrator/{role}/venv/bin/python /data/backup-orchestrator/{role}/run.py {role}"
             in unit
         )
         assert (
-            "WorkingDirectory=/data/backup-orchestrator/app" in unit
+            f"WorkingDirectory=/data/backup-orchestrator/{role}" in unit
             and "User=backup-orchestrator" in unit
         )
         assert "Restart=on-failure" in unit

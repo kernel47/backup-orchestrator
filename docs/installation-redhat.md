@@ -1,6 +1,6 @@
 # Red Hat installation
 
-Backup Orchestrator runs as a standard systemd service. Each machine has one checkout under `/data/backup-orchestrator/app`, one manually configured role-specific environment file, and its own Python environment. The Mac is used for development.
+Backup Orchestrator runs as a standard systemd service. The master checkout is under `/data/backup-orchestrator/master`; each satellite checkout is under `/data/backup-orchestrator/worker`. Each checkout has a manually configured environment file and its own Python environment. The Mac is used for development.
 
 ## 1. Prepare the machine and configuration
 
@@ -9,16 +9,20 @@ Requirements: Linux/systemd, Python 3.11 or 3.12 with pip/venv, Git, an approved
 Clone the same tested commit on the master and each satellite:
 
 ```bash
-git clone git@github.com:kernel47/backup-orchestrator.git /data/backup-orchestrator/app
-cd /data/backup-orchestrator/app
+# On the master:
+git clone git@github.com:kernel47/backup-orchestrator.git /data/backup-orchestrator/master
+cd /data/backup-orchestrator/master
+# On a satellite instead:
+# git clone git@github.com:kernel47/backup-orchestrator.git /data/backup-orchestrator/worker
+# cd /data/backup-orchestrator/worker
 ```
 
-Use an approved source archive if SSH access is unavailable. When copying a Mac checkout, exclude `.venv`, `.env`, `.env.worker`, `var/` and the local inventory export.
+Use an approved source archive if SSH access is unavailable. When copying a Mac checkout, exclude `venv`, `.env`, `.env.worker`, `var/` and the local inventory export.
 
 On a new machine, an administrator can create the service account if needed:
 
 ```bash
-sudo useradd --system --no-create-home --home-dir /data/backup-orchestrator/app --shell /sbin/nologin backup-orchestrator
+sudo useradd --system --no-create-home --home-dir /data/backup-orchestrator --shell /sbin/nologin backup-orchestrator
 ```
 
 Copy **only the configuration for that machine's role**, then edit it:
@@ -55,7 +59,9 @@ A satellite belongs to one zone; the master controls its allowed scopes and capa
 Grant the service account access to its application files:
 
 ```bash
-sudo chown -R backup-orchestrator:backup-orchestrator /data/backup-orchestrator/app
+sudo chown -R backup-orchestrator:backup-orchestrator /data/backup-orchestrator/master
+# On a satellite instead:
+# sudo chown -R backup-orchestrator:backup-orchestrator /data/backup-orchestrator/worker
 # Restrict the applicable configuration file:
 sudo chmod 600 .env
 # On a satellite instead: sudo chmod 600 .env.worker
@@ -66,17 +72,18 @@ sudo chmod 600 .env
 Only one installation command is needed on each machine:
 
 ```bash
-cd /data/backup-orchestrator/app
+cd /data/backup-orchestrator/master
 sudo PYTHON=python3.12 ./install.sh master --user backup-orchestrator
 # On each satellite instead:
+# cd /data/backup-orchestrator/worker
 # sudo PYTHON=python3.12 ./install.sh worker --user backup-orchestrator
 ```
 
-The installer creates `.venv` if needed, installs `requirements.txt` as the service account, installs the selected unit from `systemd/`, reloads systemd, and enables/restarts the service. It checks for the manually configured file and leaves it untouched. Python 3.11 can be selected instead.
+The installer creates `venv` if needed, installs `requirements.txt` as the service account, installs the selected unit from `systemd/`, reloads systemd, and enables/restarts the service. It checks for the manually configured file and leaves it untouched. Python 3.11 can be selected instead.
 
 If replacing a service installed under another name, stop and disable that service before installing this one to avoid running two masters. Keep the existing environment file and database. You can retain an existing service account by passing its name with `--user`.
 
-The unit runs `.venv/bin/python run.py master` or `.venv/bin/python run.py worker`, with the project as its working directory. The master reads `.env`; the worker reads `.env.worker`. There are no separate configure/run/start wrapper scripts.
+The unit runs `venv/bin/python run.py master` or `venv/bin/python run.py worker`, with the project as its working directory. The master reads `.env`; the worker reads `.env.worker`. There are no separate configure/run/start wrapper scripts.
 
 ```bash
 sudo systemctl status backup-orchestrator-master
@@ -88,13 +95,22 @@ curl --fail http://127.0.0.1:8000/health
 
 Use `backup-orchestrator-worker` on satellites. Use one master process with the SQLite scheduler. Stop a foreground instance before starting the corresponding service.
 
+### Update an existing service or move its checkout
+
+The service names do not change. There is no need to uninstall or delete a service when changing its checkout path.
+
+If the files already exist at the new path, update `WorkingDirectory` and both paths in `ExecStart` in `/etc/systemd/system/backup-orchestrator-master.service` or `backup-orchestrator-worker.service`, keeping the existing `User`. Then run `systemctl daemon-reload` and restart that service. Alternatively, rerun `install.sh` from the new checkout with the existing service account passed to `--user`; it replaces the unit and restarts the same service.
+
+If the files still need moving, stop the corresponding service first and make a verified backup of the master database. Move the whole checkout, including `.env` or `.env.worker`, `var/`, local inventory exports and collector configuration. Recreate the checkout's `venv` at its new location rather than relying on a moved Python environment, then rerun the installer. Reinstall or reconfigure external collector environments if their paths also changed.
+
+The relative database setting `sqlite:///var/orchestrator.db` follows the master checkout. Explicit absolute database URLs, inventory source paths stored in the dashboard, and absolute commands in `config/worker_scripts.yaml` must be updated if they point to the old location. Changing the checkout path does not require changing `MASTER_URL` when the master hostname and port stay the same.
+
 ## 3. Local storage and network access
 
 ```text
-/data/backup-orchestrator/app/
+/data/backup-orchestrator/master/
 ├── .env                         # Master configuration
-├── .env.worker                  # Satellite configuration, on worker machines
-├── .venv/
+├── venv/
 ├── run.py                       # Common service/foreground entry point
 ├── install.sh                   # Common service installer
 ├── systemd/                     # Supplied master and worker units
@@ -106,29 +122,31 @@ Use `backup-orchestrator-worker` on satellites. Use one master process with the 
 └── tools/backup-collectors/      # Separately installed external tool
 ```
 
-`var/` is inside the project, not the system `/var`. With the supplied working directory, `sqlite:///var/orchestrator.db` resolves to `/data/backup-orchestrator/app/var/orchestrator.db`. The equivalent absolute setting is `sqlite:////data/backup-orchestrator/app/var/orchestrator.db`.
+A satellite uses the same source layout under `/data/backup-orchestrator/worker`, with `.env.worker` in place of `.env` and no master database.
 
-Only the installed service definition is stored under `/etc/systemd/system`. Service output is captured in the normal journal. The checkout, Python environments, configuration and database stay under `/data/backup-orchestrator/app`.
+`var/` is inside the project, not the system `/var`. With the supplied working directory, `sqlite:///var/orchestrator.db` resolves to `/data/backup-orchestrator/master/var/orchestrator.db`. The equivalent absolute setting is `sqlite:////data/backup-orchestrator/master/var/orchestrator.db`.
+
+Only the installed service definition is stored under `/etc/systemd/system`. Service output is captured in the normal journal. The checkout, Python environments, configuration and database stay under the corresponding `master/` or `worker/` checkout.
 
 `127.0.0.1:8000` is local to the master host. A reverse proxy or Avi endpoint can expose it if the backend is reachable from that proxy. A remote Avi appliance cannot reach the master's loopback interface directly: bind to an appropriate private interface in `.env` and restrict access when using that deployment. Workers initiate outbound HTTP(S); they need no incoming worker port. For remote access use HTTPS and a valid certificate; keep SELinux and certificate validation enabled.
 
 ## 4. Add backup-collector
 
-Install your approved external collector under `/data/backup-orchestrator/app/tools/backup-collectors`, using its own environment. Backup Orchestrator does not distribute that application. If it is pip-installable:
+Install your approved external collector under `/data/backup-orchestrator/worker/tools/backup-collectors`, using its own environment. Backup Orchestrator does not distribute that application. If it is pip-installable:
 
 ```bash
-cd /data/backup-orchestrator/app/tools/backup-collectors
-python3.12 -m venv .venv
-.venv/bin/pip install .
+cd /data/backup-orchestrator/worker/tools/backup-collectors
+python3.12 -m venv venv
+venv/bin/pip install .
 ```
 
-Configure the external tool's NetBackup/API credentials and destinations using its own mechanism. It must run as the worker account from `/data/backup-orchestrator/app`, without relying on a manually activated shell. Arbitrary keys in `.env.worker` are not automatically exported into external command environments.
+Configure the external tool's NetBackup/API credentials and destinations using its own mechanism. It must run as the worker account from `/data/backup-orchestrator/worker`, without relying on a manually activated shell. Arbitrary keys in `.env.worker` are not automatically exported into external command environments.
 
 On each eligible satellite, configure the already supplied alias in `config/worker_scripts.yaml`:
 
 ```yaml
 backup_collector:
-  command: [/data/backup-orchestrator/app/tools/backup-collectors/.venv/bin/backup-collector, collect]
+  command: [/data/backup-orchestrator/worker/tools/backup-collectors/venv/bin/backup-collector, collect]
   report_format: backup_collector
   context_args:
     asset: host
@@ -153,14 +171,14 @@ For an initial Jobs pilot, select `backup_collector`, parameters `{"scope":"netb
 Prepare dependencies manually outside systemd:
 
 ```bash
-cd /data/backup-orchestrator/app
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python run.py master
-# In another terminal: .venv/bin/python run.py worker
-# Another configuration: .venv/bin/python run.py worker --config /path/to/worker.env
+cd /path/to/your/checkout
+python3.12 -m venv venv
+venv/bin/python -m pip install -r requirements-dev.txt
+venv/bin/python run.py master
+# In another terminal: venv/bin/python run.py worker
+# Another configuration: venv/bin/python run.py worker --config /path/to/worker.env
 ```
 
 Configure `.env` / `.env.worker` first. Ctrl+C stops the foreground process. This is the same application entry point used by the two services.
 
-Before updates, take a verified master backup with `.venv/bin/python -m scripts.backup --check-restore`. Use a maintenance window, preserve all private configuration and `var/`, deploy the tested commit and rerun the single installer for the role. Red Hat startup and the external collector must be validated on the actual deployment machine; local Mac tests do not replace that pilot.
+Before updates, take a verified master backup with `venv/bin/python -m scripts.backup --check-restore`. Use a maintenance window, preserve all private configuration and `var/`, deploy the tested commit and rerun the single installer for the role. Red Hat startup and the external collector must be validated on the actual deployment machine; local Mac tests do not replace that pilot.

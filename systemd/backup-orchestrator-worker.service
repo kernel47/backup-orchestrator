@@ -6,8 +6,8 @@ After=network-online.target
 [Service]
 Type=simple
 User=backup-orchestrator
-WorkingDirectory=/data/backup-orchestrator/app
-ExecStart=/data/backup-orchestrator/app/.venv/bin/python /data/backup-orchestrator/app/run.py worker
+WorkingDirectory=/data/backup-orchestrator/worker
+ExecStart=/data/backup-orchestrator/worker/venv/bin/python /data/backup-orchestrator/worker/run.py worker
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=5
