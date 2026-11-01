@@ -52,6 +52,21 @@ Install the CLI in each eligible worker's environment or replace the executable 
 {"scope": "netbackup", "type": "jobs"}
 ```
 
+An external collector can keep its own virtual environment and configuration. Set the optional `working_directory` on its command definition when it reads files relative to its project directory:
+
+```yaml
+backup_collector:
+  command:
+    - /data/backup-collectors-cli/venv/bin/python
+    - /data/backup-collectors-cli/cli.py
+    - collect
+  working_directory: /data/backup-collectors-cli
+  report_format: backup_collector
+  # Keep the context_args, parameter_args and required_parameters above.
+```
+
+Without this setting, commands run from the worker project root. Relative working directories are resolved from that root. This setting is controlled only by the worker's local allowlist; task parameters cannot override it. The collector must still load its own `.env` (for example with `load_dotenv`); selecting a Python executable does not load it automatically. The service account needs access to the directory and its configuration. Interactive shell exports are not automatically available to a systemd service. Never print secret values when diagnosing missing configuration.
+
 For a task on `nbu-emea-01`, the worker constructs argv equivalent to:
 
 ```bash

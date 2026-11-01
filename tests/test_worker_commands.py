@@ -23,6 +23,50 @@ DEFINITION = {
 }
 
 
+@pytest.mark.parametrize("directory_exists", [True, False])
+def test_external_command_loads_dotenv_from_its_working_directory(
+    tmp_path, monkeypatch, directory_exists
+):
+    monkeypatch.delenv("COLLECTOR_TEST_REFERENCE", raising=False)
+    script = tmp_path / "cli.py"
+    script.write_text(
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "from dotenv import load_dotenv\n"
+        "load_dotenv(Path.cwd() / '.env')\n"
+        "assert os.environ['COLLECTOR_TEST_REFERENCE'] == 'available'\n"
+        "print(json.dumps({'status': 'SUCCESS', 'summary': 'Configuration loaded'}))\n"
+    )
+    (tmp_path / ".env").write_text("COLLECTOR_TEST_REFERENCE=available\n")
+    monkeypatch.setattr(
+        "worker.executor.load",
+        lambda name: {
+            "external": {
+                "command": [sys.executable, str(script)],
+                "working_directory": str(
+                    tmp_path if directory_exists else tmp_path / "missing"
+                ),
+            }
+        },
+    )
+    report, _ = asyncio.run(
+        execute(
+            {
+                "script": "external",
+                "timeout_seconds": 5,
+                "parameters": {"working_directory": "/ignored-task-override"},
+            }
+        )
+    )
+    if directory_exists:
+        assert report["status"] == "SUCCESS"
+        assert report["summary"] == "Configuration loaded"
+    else:
+        assert report["status"] == "FAILURE"
+        assert report["details"]["reason"] == "COMMAND_CONFIG"
+        assert "working_directory" in report["error"]
+
+
 def test_command_arguments_preserve_target_and_do_not_execute_parameter_text():
     task = {
         "host": "host-01",

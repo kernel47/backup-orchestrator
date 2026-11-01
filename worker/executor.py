@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from orchestrator.config import ROOT, load
 from orchestrator.schemas import CollectorResult
@@ -45,13 +46,25 @@ async def _execute(task):
             if isinstance(definition, dict)
             else [sys.executable, "-m", "worker.runner", task["script"]]
         )
+        working_directory = ROOT
+        if isinstance(definition, dict) and "working_directory" in definition:
+            directory = definition["working_directory"]
+            if not isinstance(directory, str) or not directory.strip():
+                raise ValueError("working_directory must be a nonempty path")
+            working_directory = Path(directory)
+            if not working_directory.is_absolute():
+                working_directory = ROOT / working_directory
+            if not working_directory.is_dir():
+                raise ValueError(
+                    "Collector working_directory does not exist or is inaccessible"
+                )
     except (ValueError, TypeError, KeyError) as error:
         return failure("COMMAND_CONFIG", str(error)), ""
     with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
-                cwd=ROOT,
+                cwd=working_directory,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=output,
                 stderr=errors,
@@ -60,7 +73,7 @@ async def _execute(task):
         except OSError:
             return failure(
                 "COMMAND_START",
-                "Unable to start collector; check executable installation and permissions",
+                "Unable to start collector; check executable, working directory and permissions",
             ), ""
         try:
             await asyncio.wait_for(
