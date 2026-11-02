@@ -1,12 +1,22 @@
 """Shared template setup and dashboard context."""
 
+from urllib.parse import urlsplit, urlunsplit
+
 from fastapi.templating import Jinja2Templates
 
 from .cadences import cadence_label
 from .config import ROOT, settings
 from .scheduling import local_label
 
+
+def local_url(value):
+    """Keep navigation on the browser's origin behind TLS-terminating proxies."""
+    parts = urlsplit(str(value))
+    return urlunsplit(("", "", parts.path, parts.query, parts.fragment))
+
+
 templates = Jinja2Templates(directory=ROOT / "orchestrator/templates")
+templates.env.filters["local_url"] = local_url
 templates.context_processors.append(
     lambda request: {
         "active_zone": getattr(request.state, "zone", ""),

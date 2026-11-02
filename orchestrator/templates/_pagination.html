@@ -10,14 +10,14 @@
 </noscript>
 </form>{% endif %}
   <div class="pagination-pages">
-    {% if page>1 %}<a class="page-control" href="{{request.url.include_query_params(page=page-1)}}" aria-label="Previous page">‹</a>{% else %}<span class="page-control disabled" aria-disabled="true">‹</span>{% endif %}
+    {% if page>1 %}<a class="page-control" href="{{(request.url.include_query_params(page=page-1))|local_url}}" aria-label="Previous page">‹</a>{% else %}<span class="page-control disabled" aria-disabled="true">‹</span>{% endif %}
     {% set previous=namespace(number=0) %}
     {% for number in [1,page-1,page,page+1,pages]|unique|sort if number>=1 and number<=pages %}
       {% if previous.number and number>previous.number+1 %}<span class="page-ellipsis">…</span>{% endif %}
-      {% if number==page %}<span class="page-number current" aria-current="page">{{number}}</span>{% else %}<a class="page-number" href="{{request.url.include_query_params(page=number)}}" aria-label="Page {{number}}">{{number}}</a>{% endif %}
+      {% if number==page %}<span class="page-number current" aria-current="page">{{number}}</span>{% else %}<a class="page-number" href="{{(request.url.include_query_params(page=number))|local_url}}" aria-label="Page {{number}}">{{number}}</a>{% endif %}
       {% set previous.number=number %}
     {% endfor %}
-    {% if page<pages %}<a class="page-control" href="{{request.url.include_query_params(page=page+1)}}" aria-label="Next page">›</a>{% else %}<span class="page-control disabled" aria-disabled="true">›</span>{% endif %}
+    {% if page<pages %}<a class="page-control" href="{{(request.url.include_query_params(page=page+1))|local_url}}" aria-label="Next page">›</a>{% else %}<span class="page-control disabled" aria-disabled="true">›</span>{% endif %}
   </div>
 </nav>
 {% endif %}

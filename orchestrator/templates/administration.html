@@ -132,7 +132,7 @@
 <section class="section-heading">
 <h2>Discovery history</h2>
 </section>
-<div class="target-list">{% for item in sync_history %}<a class="button small" href="{{request.url.include_query_params(sync_id=item.id,page=1)}}">{{item.id[:8]}} · {{item.status}}</a>{% endfor %}</div>{% for sync in syncs %}<section class="panel settings-intro">
+<div class="target-list">{% for item in sync_history %}<a class="button small" href="{{(request.url.include_query_params(sync_id=item.id,page=1))|local_url}}">{{item.id[:8]}} · {{item.status}}</a>{% endfor %}</div>{% for sync in syncs %}<section class="panel settings-intro">
 <div class="group-heading">
 <h2>Discovery {{sync.id[:8]}} <span class="quiet-chip">{{sync.status}}</span>
 </h2>{% if sync.status=='PREVIEW' %}<button class="button primary" data-apply-sync="{{sync.id}}">Apply preview</button>{% endif %}</div>

@@ -179,7 +179,7 @@ A satellite uses the same source layout under `/data/backup-orchestrator/worker`
 
 Only the installed service definition is stored under `/etc/systemd/system`. Service output is captured in the normal journal and local log files. The checkout, Python environments, configuration and SQLite database stay under the corresponding `master/` or `worker/` checkout. With PostgreSQL, database storage is managed by the PostgreSQL server; the application directory does not control its data directory.
 
-`127.0.0.1:8000` is local to the master host. A reverse proxy or Avi endpoint can expose it if the backend is reachable from that proxy. A remote Avi appliance cannot reach the master's loopback interface directly: bind to an appropriate private interface in `.env` and restrict access when using that deployment. Workers initiate outbound HTTP(S); they need no incoming worker port. For remote access use HTTPS and a valid certificate; keep SELinux and certificate validation enabled.
+`127.0.0.1:8000` is local to the master host. A reverse proxy or Avi endpoint can expose it if the backend is reachable from that proxy. A remote Avi appliance cannot reach the master's loopback interface directly: bind to an appropriate private interface in `.env` and restrict access when using that deployment. Workers initiate outbound HTTP(S); they need no incoming worker port. For remote access use HTTPS and a valid certificate; keep SELinux and certificate validation enabled. Generated dashboard links use relative paths so filters, pagination and collector drilldowns keep the browser's public protocol and hostname when Avi terminates HTTPS and forwards HTTP to the master.
 
 ## 4. Add backup-collector
 

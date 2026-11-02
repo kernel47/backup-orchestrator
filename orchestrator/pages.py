@@ -15,7 +15,7 @@ from .management_views import (
     render_overview,
 )
 from .security import web_token
-from .web import templates
+from .web import local_url, templates
 
 router = APIRouter()
 
@@ -50,7 +50,7 @@ def dashboard(
     if view == "settings":
         if section == "inventory":
             return RedirectResponse(
-                str(request.url.include_query_params(view="hosts")), 303
+                local_url(request.url.include_query_params(view="hosts")), 303
             )
         return render_collector_settings(request, selected_filters)
     if view in ("workspace", "scopes"):

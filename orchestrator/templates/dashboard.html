@@ -48,7 +48,7 @@
 <div class="status-tabs" role="navigation" aria-label="Collection status filters">
 {% for value,label in [('', 'All'),('ATTENTION','Needs attention'),('FAILED','Failed'),('SUCCESS','Success'),('MISSING','Missing'),('RUNNING','Running'),('TIMEOUT','Timeout'),('UNKNOWN','Unknown'),('RECOVERED','Recovered')] %}
 {% set active=filters.get('status','')==value %}
-<a href="{{request.url.include_query_params(page=1,status=value) if value else request.url.remove_query_params('status').include_query_params(page=1)}}" class="{{'selected' if active}}" {% if active %}aria-current="true"{% endif %}>{{label}}{% if value %} <b>{{counts.FAILED+counts.TIMEOUT+counts.MISSING+counts.UNKNOWN if value=='ATTENTION' else counts[value]}}</b>{% endif %}</a>
+<a href="{{(request.url.include_query_params(page=1,status=value) if value else request.url.remove_query_params('status').include_query_params(page=1))|local_url}}" class="{{'selected' if active}}" {% if active %}aria-current="true"{% endif %}>{{label}}{% if value %} <b>{{counts.FAILED+counts.TIMEOUT+counts.MISSING+counts.UNKNOWN if value=='ATTENTION' else counts[value]}}</b>{% endif %}</a>
 {% endfor %}
 </div>
 

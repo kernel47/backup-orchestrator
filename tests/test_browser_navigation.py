@@ -184,3 +184,69 @@ def test_collector_filters_stay_on_collectors_and_reset_saved_selection(database
                 assert str(reset.url).endswith("/w/EMEA/collectors")
                 again = client.get("/w/EMEA/collectors")
                 assert "<strong>Policies</strong>" in again.text
+
+
+def test_proxy_terminated_https_keeps_filter_and_drilldown_links_relative(database):
+    from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
+
+    class Links(HTMLParser):
+        def __init__(self, page):
+            super().__init__()
+            self.links = []
+            self.feed(page)
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "a" and attributes.get("href"):
+                self.links.append(attributes)
+
+    one_window("SUCCESS")
+    headers = {
+        "Accept": "text/html",
+        "Host": "orchestrator.example.internal",
+        "X-Forwarded-Proto": "https",
+    }
+    with DashboardClient(
+        app, base_url="http://internal-master:8000", headers=headers
+    ) as client:
+        response = client.get("/?view=runs&workspace=EMEA&date=2026-10-15&period=month")
+        assert response.status_code == 200
+        links = Links(response.text).links
+        assert all(
+            link["href"].startswith("/") and not link["href"].startswith("//")
+            for link in links
+        )
+        success = next(
+            link["href"]
+            for link in links
+            if parse_qs(urlsplit(link["href"]).query).get("status") == ["SUCCESS"]
+        )
+        filtered = client.get(success)
+        assert filtered.status_code == 200 and filtered.url.path.endswith("/runs")
+        assert 'aria-current="true">Success' in filtered.text
+        second_page = next(
+            link["href"] for link in links if link.get("aria-label") == "Page 2"
+        )
+        page = client.get(second_page)
+        assert page.status_code == 200 and "<strong>26–50</strong>" in page.text
+        collectors = client.get(
+            "/?view=collectors&workspace=EMEA&scope=NetBackup&date=2026-10-15&period=week"
+        )
+        links = Links(collectors.text).links
+        assert all(
+            link["href"].startswith("/") and not link["href"].startswith("//")
+            for link in links
+        )
+        collection_day = next(
+            link["href"] for link in links if "history-cell" in link.get("class", "")
+        )
+        history = client.get(collection_day)
+        assert history.status_code == 200 and history.url.path.endswith("/runs")
+        redirect = client.get(
+            "/?view=settings&section=inventory&workspace=EMEA",
+            headers={"Accept": "application/json"},
+            follow_redirects=False,
+        )
+        assert redirect.status_code == 303
+        assert redirect.headers["location"].startswith("/")
