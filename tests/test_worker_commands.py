@@ -2,6 +2,7 @@ import asyncio
 import sys
 
 import pytest
+import yaml
 
 from worker.commands import build_command
 from worker.executor import execute
@@ -21,6 +22,36 @@ DEFINITION = {
     },
     "required_parameters": ["scope", "type"],
 }
+
+
+@pytest.mark.parametrize(
+    "catalog",
+    [
+        None,
+        [],
+        {"external": 42},
+        {"external": {"command": [sys.executable], "parameter_args": []}},
+        {"external": {"command": [sys.executable], "defaults": None}},
+        {"external": {"command": [sys.executable], "context_args": {12: "host"}}},
+    ],
+)
+def test_invalid_worker_catalog_returns_a_configuration_report(monkeypatch, catalog):
+    monkeypatch.setattr("worker.executor.load", lambda name: catalog)
+    report, _ = asyncio.run(
+        execute({"script": "external", "timeout_seconds": 5, "parameters": {}})
+    )
+    assert report["status"] == "FAILURE"
+    assert report["details"]["reason"] == "COMMAND_CONFIG"
+
+
+def test_invalid_yaml_returns_a_report_without_disclosing_configuration(monkeypatch):
+    def invalid_catalog(name):
+        return yaml.safe_load("private-secret: [broken")
+
+    monkeypatch.setattr("worker.executor.load", invalid_catalog)
+    report, _ = asyncio.run(execute({"script": "external", "timeout_seconds": 5}))
+    assert report["details"]["reason"] == "COMMAND_CONFIG"
+    assert "private-secret" not in str(report)
 
 
 @pytest.mark.parametrize("directory_exists", [True, False])

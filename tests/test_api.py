@@ -109,13 +109,24 @@ def test_collector_update_create_and_heartbeat(database):
         assert c.get("/api/collections", params={"date": "invalid"}).status_code == 422
 
 
-def test_hour_view_and_pause_resume_future_windows(database):
+def test_daily_history_and_pause_resume_future_windows(database):
     from datetime import timedelta
 
     with TestClient(app) as c:
+        # Populate expectations explicitly; browsing history must remain read-only.
+        c.get(
+            "/api/collections",
+            params={
+                "collector_id": "netbackup_jobs",
+                "date": "2026-10-15",
+                "zone": "EMEA",
+            },
+        )
         response = c.get(
             "/",
             params={
+                "view": "runs",
+                "period": "day",
                 "collector_id": "netbackup_jobs",
                 "date": "2026-10-15",
                 "zone": "EMEA",
@@ -123,8 +134,8 @@ def test_hour_view_and_pause_resume_future_windows(database):
                 "end": "2026-10-15T11:00:00Z",
             },
         )
-        assert response.status_code == 200 and "24 of 24" in response.text
-        assert "start=2026-10-15T10" in response.text
+        assert response.status_code == 200 and "25 of 576" in response.text
+        assert 'name="hour"' not in response.text
         future = (svc.now() + timedelta(days=2)).strftime("%Y-%m-%d")
         c.get(
             "/api/collections",

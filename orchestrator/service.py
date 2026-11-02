@@ -1,15 +1,29 @@
+"""Schedule collection windows and coordinate attempts; targeting and history are separate."""
+
 import time
 import uuid
 from bisect import bisect_left
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from .collection_history import rows as rows
 from .config import settings
 from .db import transaction
+from .history_queries import window_query
 from .models import Attempt, Collector, Host, HostGroup, Schedule, Window, Worker, Zone
+from .records import bounds, dt, iso
+from .records import dump as dump
 from .scheduling import daily_period, latest_daily_period, local_label, next_daily
+from .targeting import (
+    clock_worker,
+    host_active,
+    origin_groups_active,
+    resolve_targets,
+    rule_group_ids,
+    rule_targets,
+)
 
 UTC = timezone.utc
 
@@ -20,28 +34,6 @@ def uid():
 
 def now():
     return datetime.now(UTC)
-
-
-def iso(value):
-    return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def dt(value):
-    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if result.tzinfo is None:
-        raise ValueError("UTC timezone required")
-    return result.astimezone(UTC)
-
-
-def dump(obj):
-    data = {
-        col.name: getattr(obj, col.name)
-        for col in obj.__table__.columns
-        if col.name not in ("token_hash", "token_env")
-    }
-    if isinstance(obj, Worker):
-        data["zone"] = obj.zones[0] if len(obj.zones) == 1 else None
-    return data
 
 
 def bootstrap():
@@ -60,93 +52,6 @@ def bootstrap():
         for zid in ids:
             if zid and not s.get(Zone, zid):
                 s.add(Zone(id=zid, name=zid, enabled=True))
-
-
-def host_active(s, h):
-    zone = s.get(Zone, h.zone)
-    return h.enabled and not h.deleted and not h.discovered and zone and zone.enabled
-
-
-def origin_groups_active(s, w):
-    ids = w.snapshot.get("host_group_ids") or (
-        [w.snapshot["host_group_id"]] if w.snapshot.get("host_group_id") else []
-    )
-    return not ids or any(
-        (g := s.get(HostGroup, gid)) and g.enabled and not g.deleted for gid in ids
-    )
-
-
-def rule_group_ids(rule):
-    return rule.host_group_ids or [rule.host_group_id]
-
-
-def resolve_targets(s, collector_id, group_ids, zones=None, allow_inactive=False):
-    c = s.get(Collector, collector_id)
-    if not c:
-        raise ValueError("Unknown collector")
-    if not group_ids:
-        raise ValueError("Choose at least one host group")
-    if any(not s.get(Zone, z) for z in (zones or [])):
-        raise ValueError("Unknown target zone")
-    targets = []
-    skipped = []
-    seen = set()
-    for gid in dict.fromkeys(group_ids):
-        g = s.get(HostGroup, gid)
-        if not g or g.deleted:
-            raise ValueError("Unknown host group")
-        if c.zone and g.zone and c.zone != g.zone:
-            raise ValueError("Collector and host group must belong to the same zone")
-        if not g.enabled and not allow_inactive:
-            raise ValueError("Host group is disabled")
-        for hid in g.host_ids:
-            if hid in seen:
-                continue
-            seen.add(hid)
-            h = s.get(Host, hid)
-            reason = (
-                "Unknown host"
-                if not h
-                else "Host deleted"
-                if h.deleted
-                else "Host disabled"
-                if not h.enabled or h.discovered
-                else "Zone inactive"
-                if not host_active(s, h)
-                else "Outside selected zones"
-                if zones and h.zone not in zones
-                else "Scope mismatch"
-                if h.scope != c.scope
-                else "Zone mismatch"
-                if c.zone and h.zone != c.zone
-                else ""
-            )
-            if reason:
-                skipped.append({"host": hid, "reason": reason})
-            else:
-                targets.append(h)
-    return c, targets, skipped
-
-
-def rule_targets(s, rule):
-    groups = [s.get(HostGroup, g) for g in rule_group_ids(rule)]
-    if any(not g or g.deleted or not g.enabled for g in groups):
-        return []
-    return resolve_targets(s, rule.collector_id, rule_group_ids(rule), rule.zones)[1]
-
-
-def clock_worker(s, h):
-    """Keep the preferred satellite's clock stable even when it is offline."""
-    candidates = [
-        s.get(Worker, wid) for wid in [h.preferred_worker, h.fallback_worker] if wid
-    ]
-    if not h.preferred_worker and not h.fallback_worker:
-        candidates = list(s.scalars(select(Worker).order_by(Worker.id)))
-    for worker in candidates:
-        if worker and worker.zones == [h.zone] and h.scope in worker.scopes:
-            # An unknown preferred clock must not silently adopt a different one.
-            return worker if worker.timezone else None
-    return None
 
 
 def schedule_timing(s, rule):
@@ -195,11 +100,6 @@ def rule_periods(s, h, rule, start, end, interval):
             p += timedelta(seconds=interval)
 
 
-def bounds(day):
-    start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=UTC)
-    return start, start + timedelta(days=1)
-
-
 def snapshot(c, h, parameters=None):
     return {
         "script": c.script,
@@ -219,14 +119,22 @@ def expected(
     start, end = bounds(day)
     ids = []
     current = now()
+    history = select(Window).where(
+        Window.period_start >= iso(start), Window.period_start < iso(end)
+    )
+    if collector_id:
+        history = history.where(Window.collector_id == collector_id)
+    if host:
+        history = history.where(Window.host_id == host)
+    if zone:
+        history = history.where(Window.zone == zone)
     known = {
         (w.host_id, w.collector_id, w.period_start): w
-        for w in s.scalars(
-            select(Window).where(
-                Window.period_start >= iso(start), Window.period_start < iso(end)
-            )
-        )
+        for w in s.scalars(history.order_by(Window.period_start, Window.host_id))
     }
+    by_target = defaultdict(list)
+    for window in known.values():
+        by_target[(window.host_id, window.collector_id)].append(window)
     for c in s.scalars(select(Collector)):
         if collector_id and c.id != collector_id:
             continue
@@ -235,25 +143,21 @@ def expected(
                 continue
             rule = host_rule(s, c, h)
             interval = rule.interval_seconds if rule else c.interval_seconds
+            previous = by_target[(h.id, c.id)]
             # Reuse every historical window, even if the current cadence has changed.
-            for existing in list(known.values()):
-                if existing.host_id == h.id and existing.collector_id == c.id:
-                    ids.append(existing.id)
-                    if (
-                        enqueue
-                        and c.enabled
-                        and h.enabled
-                        and dt(existing.period_end) <= current
-                        and existing.status in ("MISSING", "FAILED", "TIMEOUT")
-                    ):
-                        queue(s, existing, parameters)
+            for existing in previous:
+                ids.append(existing.id)
+                if (
+                    enqueue
+                    and c.enabled
+                    and h.enabled
+                    and dt(existing.period_end) <= current
+                    and existing.status in ("MISSING", "FAILED", "TIMEOUT")
+                ):
+                    queue(s, existing, parameters)
             if rule is False or h.deleted or h.discovered:
                 continue
-            intervals = sorted(
-                (w.period_start, w.period_end)
-                for w in known.values()
-                if w.host_id == h.id and w.collector_id == c.id
-            )
+            intervals = sorted((w.period_start, w.period_end) for w in previous)
             starts = [a for a, b in intervals]
             for p, q in rule_periods(s, h, rule, start, end, interval):
                 if (
@@ -327,7 +231,7 @@ def queue(s, w, parameters=None, manual=True):
         or not origin_groups_active(s, w)
     ):
         return False
-    count = len(list(s.scalars(select(Attempt).where(Attempt.window_id == w.id))))
+    count = s.scalar(select(func.count(Attempt.id)).where(Attempt.window_id == w.id))
     w.retry_base = count
     w.status = "PENDING"
     w.available_at = 0
@@ -360,144 +264,28 @@ def queue(s, w, parameters=None, manual=True):
     return True
 
 
-def rows(s, filters=None, include_attempts=True, window_ids=None):
-    filters = filters or {}
-    query = select(Window)
-    if window_ids is not None:
-        query = query.where(Window.id.in_(window_ids))
-    if filters.get("date"):
-        a, b = bounds(filters["date"])
-        query = query.where(Window.period_start >= iso(a), Window.period_start < iso(b))
-    if filters.get("start"):
-        query = query.where(Window.period_start >= filters["start"])
-    if filters.get("end"):
-        query = query.where(Window.period_start < filters["end"])
-    if filters.get("collector_id"):
-        query = query.where(Window.collector_id == filters["collector_id"])
-    hs = {h.id: h for h in s.scalars(select(Host))}
-    cs = {c.id: c for c in s.scalars(select(Collector))}
-    ats = defaultdict(list)
-    windows = list(s.scalars(query.order_by(Window.period_start, Window.host_id)))
-    ids = [w.id for w in windows]
-    failed_attempts = set()
-    if ids and include_attempts:
-        for a in s.scalars(
-            select(Attempt).where(Attempt.window_id.in_(ids)).order_by(Attempt.number)
-        ):
-            ats[a.window_id].append(dump(a))
-    elif ids:
-        # Aggregate report metadata in SQL; do not load log/result bodies for every period.
-        failed_attempts = set(
-            s.scalars(
-                select(Attempt.window_id)
-                .join(Window, Window.id == Attempt.window_id)
-                .where(
-                    Attempt.window_id.in_(
-                        query.with_only_columns(Window.id).order_by(None)
-                    ),
-                    Attempt.status.notin_(["SUCCESS", "RUNNING"]),
-                )
-                .distinct()
-            )
-        )
-    out = []
-    for w in windows:
-        h = hs[w.host_id]
-        c = cs[w.collector_id]
-        attempts = ats[w.id]
-        r = dict(
-            dump(w),
-            host=h.id,
-            zone=w.snapshot.get("zone", h.zone),
-            scope=w.snapshot.get("scope", c.scope),
-            collector=c.name,
-            attempts=attempts,
-            worker=attempts[-1]["worker_id"] if attempts else None,
-            summary=(attempts[-1]["result"] or {}).get("summary", "")
-            if attempts
-            else "",
-        )
-        if filters.get("host_group_id") and filters[
-            "host_group_id"
-        ] not in w.snapshot.get("host_group_ids", [w.snapshot.get("host_group_id")]):
-            continue
-        if (
-            filters.get("schedule_id")
-            and w.snapshot.get("schedule_id") != filters["schedule_id"]
-        ):
-            continue
-        if any(
-            filters.get(k) and r[k] != filters[k]
-            for k in ("zone", "scope", "host", "worker")
-        ):
-            continue
-        if filters.get("status") == "RECOVERED":
-            if not (
-                r["status"] == "SUCCESS"
-                and (
-                    w.id in failed_attempts
-                    or any(a["status"] not in ("SUCCESS", "RUNNING") for a in attempts)
-                )
-            ):
-                continue
-        elif filters.get("status") == "ATTENTION":
-            if r["status"] not in ("FAILED", "TIMEOUT", "MISSING", "UNKNOWN"):
-                continue
-        elif filters.get("status") and r["status"] != filters["status"]:
-            continue
-        if filters.get("start") and dt(w.period_start) < dt(filters["start"]):
-            continue
-        if filters.get("end") and dt(w.period_start) >= dt(filters["end"]):
-            continue
-        planned_zone = w.snapshot.get("execution_timezone", "")
-        if not planned_zone and not attempts and w.snapshot.get("schedule_id"):
-            clock = clock_worker(s, h)
-            if clock:
-                planned_zone = clock.timezone
-        actual_zone = (
-            attempts[-1].get("context", {}).get("worker_timezone", "")
-            if attempts
-            else ""
-        )
-        r["recovered"] = w.status == "SUCCESS" and (
-            w.id in failed_attempts
-            or any(a["status"] not in ("SUCCESS", "RUNNING") for a in attempts)
-        )
-        r.update(
-            execution_timezone=planned_zone,
-            scheduled_utc=w.snapshot.get("scheduled_for", w.period_end),
-            scheduled_local=local_label(
-                w.snapshot.get("scheduled_for", w.period_end), planned_zone
-            )
-            if planned_zone
-            else "",
-            started_local=local_label(attempts[-1]["started_at"], actual_zone)
-            if attempts and actual_zone
-            else "",
-            actual_timezone=actual_zone,
-        )
-        out.append(r)
-    return out
-
-
 def retry(filters, ids=None, mode="retry"):
+    if ids == []:
+        return []
     with transaction() as s:
         from fastapi import HTTPException
 
-        if ids is not None and any(not s.get(Window, wid) for wid in ids):
-            raise HTTPException(404, "Collection not found in this workspace")
-        selected = rows(s, filters)
+        if ids is not None:
+            found = set(s.scalars(select(Window.id).where(Window.id.in_(ids))))
+            if found != set(ids):
+                raise HTTPException(404, "Collection not found in this workspace")
+        allowed = (
+            ("SUCCESS",)
+            if mode == "rerun"
+            else ("FAILED", "TIMEOUT", "MISSING", "UNKNOWN")
+        )
+        selected = window_query(filters)
+        selected = selected.where(Window.status.in_(allowed))
+        if ids is not None:
+            selected = selected.where(Window.id.in_(ids))
         queued = []
-        for row in selected:
-            if ids is not None and row["id"] not in ids:
-                continue
-            w = s.get(Window, row["id"])
-            allowed = (
-                ("SUCCESS",)
-                if mode == "rerun"
-                else ("FAILED", "TIMEOUT", "MISSING", "UNKNOWN")
-            )
-            if w.status in allowed and queue(s, w):
+        for w in s.scalars(selected.order_by(Window.period_start, Window.host_id)):
+            if queue(s, w):
                 queued.append(w.id)
         return queued
 
@@ -591,103 +379,122 @@ def claim(worker_id):
         if len(worker.zones) != 1:
             return None
         worker.heartbeat = time.time()
-        active = list(
-            s.scalars(
-                select(Attempt).where(
-                    Attempt.worker_id == worker_id, Attempt.status == "RUNNING"
-                )
+        active = s.scalar(
+            select(func.count(Attempt.id)).where(
+                Attempt.worker_id == worker_id, Attempt.status == "RUNNING"
             )
         )
-        if len(active) >= worker.concurrency:
+        if active >= worker.concurrency:
             return None
-        for w in s.scalars(
+        busy_hosts = (
+            select(Window.host_id)
+            .join(Attempt, Attempt.window_id == Window.id)
+            .where(Attempt.status == "RUNNING")
+            .group_by(Window.host_id)
+            .having(func.count(Attempt.id) >= settings.host_concurrency)
+            .correlate(None)
+        )
+        pending = (
             select(Window)
-            .where(Window.status == "PENDING", Window.available_at <= time.time())
+            .join(Host, Host.id == Window.host_id)
+            .where(
+                Window.status == "PENDING",
+                Window.available_at <= time.time(),
+                Window.zone == worker.zones[0],
+                Host.scope.in_(worker.scopes),
+                Window.host_id.not_in(busy_hosts),
+            )
             .order_by(Window.period_start)
-        ):
-            h = s.get(Host, w.host_id)
-            c = s.get(Collector, w.collector_id)
-            if (
-                not host_active(s, h)
-                or not c.enabled
-                or h.scope != c.scope
-                or c.zone
-                and c.zone != h.zone
-                or not origin_groups_active(s, w)
-            ):
-                w.status = "DISABLED"
-                continue
-            if h.scope not in worker.scopes or worker.zones != [h.zone]:
-                continue
-            if (
-                w.snapshot.get("schedule_kind") == "daily_local"
-                and not w.snapshot.get("manual_trigger")
-                and worker.timezone != w.snapshot.get("execution_timezone")
-            ):
-                continue
-            preferred = s.get(Worker, h.preferred_worker)
-            preferred_eligible = (
-                preferred
-                and h.scope in preferred.scopes
-                and preferred.zones == [h.zone]
-            )
-            if (
-                h.preferred_worker
-                and worker.id != h.preferred_worker
-                and not (
-                    worker.id == h.fallback_worker
-                    and (
-                        not preferred_eligible
-                        or time.time() - preferred.heartbeat > settings.offline_seconds
-                    )
+            .execution_options(yield_per=32)
+        )
+        with s.execute(pending) as candidates:
+            for w in candidates.scalars():
+                h = s.get(Host, w.host_id)
+                c = s.get(Collector, w.collector_id)
+                if (
+                    not host_active(s, h)
+                    or not c.enabled
+                    or h.scope != c.scope
+                    or c.zone
+                    and c.zone != h.zone
+                    or not origin_groups_active(s, w)
+                ):
+                    w.status = "DISABLED"
+                    continue
+                if h.scope not in worker.scopes or worker.zones != [h.zone]:
+                    continue
+                if (
+                    w.snapshot.get("schedule_kind") == "daily_local"
+                    and not w.snapshot.get("manual_trigger")
+                    and worker.timezone != w.snapshot.get("execution_timezone")
+                ):
+                    continue
+                preferred = s.get(Worker, h.preferred_worker)
+                preferred_eligible = (
+                    preferred
+                    and h.scope in preferred.scopes
+                    and preferred.zones == [h.zone]
                 )
-            ):
-                continue
-            n = (
-                len(list(s.scalars(select(Attempt).where(Attempt.window_id == w.id))))
-                + 1
-            )
-            a = Attempt(
-                id=uid(),
-                window_id=w.id,
-                worker_id=worker.id,
-                number=n,
-                status="RUNNING",
-                started_at=time.time(),
-                lease_until=time.time() + settings.lease_seconds,
-                logs="",
-                context=dict(
-                    w.snapshot,
-                    worker_timezone=worker.timezone,
-                    scheduled_for=w.snapshot.get("scheduled_for", w.period_end),
-                    period_start=w.period_start,
-                    period_end=w.period_end,
-                    collector_id=w.collector_id,
-                    host=h.id,
-                    zone=h.zone,
-                    scope=h.scope,
-                ),
-            )
-            s.add(a)
-            w.status = "RUNNING"
-            s.flush()
-            return {
-                "task_id": a.id,
-                "collection_id": w.id,
-                "collector_id": c.id,
-                "collector": c.name,
-                "host": h.id,
-                "period_start": w.period_start,
-                "period_end": w.period_end,
-                **w.snapshot,
-                "zone": h.zone,
-                "scope": h.scope,
-                "lease_seconds": settings.lease_seconds,
-                "worker_timezone": worker.timezone,
-                "scheduled_for": w.snapshot.get("scheduled_for", w.period_end),
-                "attempt_number": a.number,
-                "worker_id": worker.id,
-            }
+                if (
+                    h.preferred_worker
+                    and worker.id != h.preferred_worker
+                    and not (
+                        worker.id == h.fallback_worker
+                        and (
+                            not preferred_eligible
+                            or time.time() - preferred.heartbeat
+                            > settings.offline_seconds
+                        )
+                    )
+                ):
+                    continue
+                n = (
+                    s.scalar(
+                        select(func.count(Attempt.id)).where(Attempt.window_id == w.id)
+                    )
+                    + 1
+                )
+                a = Attempt(
+                    id=uid(),
+                    window_id=w.id,
+                    worker_id=worker.id,
+                    number=n,
+                    status="RUNNING",
+                    started_at=time.time(),
+                    lease_until=time.time() + settings.lease_seconds,
+                    logs="",
+                    context=dict(
+                        w.snapshot,
+                        worker_timezone=worker.timezone,
+                        scheduled_for=w.snapshot.get("scheduled_for", w.period_end),
+                        period_start=w.period_start,
+                        period_end=w.period_end,
+                        collector_id=w.collector_id,
+                        host=h.id,
+                        zone=h.zone,
+                        scope=h.scope,
+                    ),
+                )
+                s.add(a)
+                w.status = "RUNNING"
+                s.flush()
+                return {
+                    "task_id": a.id,
+                    "collection_id": w.id,
+                    "collector_id": c.id,
+                    "collector": c.name,
+                    "host": h.id,
+                    "period_start": w.period_start,
+                    "period_end": w.period_end,
+                    **w.snapshot,
+                    "zone": h.zone,
+                    "scope": h.scope,
+                    "lease_seconds": settings.lease_seconds,
+                    "worker_timezone": worker.timezone,
+                    "scheduled_for": w.snapshot.get("scheduled_for", w.period_end),
+                    "attempt_number": a.number,
+                    "worker_id": worker.id,
+                }
     return None
 
 
@@ -719,6 +526,8 @@ def result(task_id, worker_id, payload, logs=""):
             a.status = "SUCCESS"
             a.finished_at = time.time()
             w.status = "SUCCESS"
+            collector = s.get(Collector, w.collector_id)
+            collector.last_success_at = max(collector.last_success_at, a.finished_at)
         else:
             fail(
                 s,
@@ -827,11 +636,6 @@ def tick():
 
 
 # Explicit inventory groups and collector-to-group schedules.
-def group_targets(s, collector_id, group_id):
-    c, targets, skipped = resolve_targets(s, collector_id, [group_id])
-    return c, s.get(HostGroup, group_id), targets, skipped
-
-
 def validate_groups_and_schedules(s, require_targets=True):
     schedules = list(s.scalars(select(Schedule).where(Schedule.enabled == True)))
     assigned = {}
@@ -999,8 +803,8 @@ def run_group(collector_id, group_id, parameters=None, group_ids=None, zones=Non
             if (
                 w.status == "PENDING"
                 and not w.snapshot.get("host_group_id")
-                and not list(
-                    s.scalars(select(Attempt).where(Attempt.window_id == w.id))
+                and not s.scalar(
+                    select(Attempt.id).where(Attempt.window_id == w.id).limit(1)
                 )
             ):
                 w.snapshot = dict(

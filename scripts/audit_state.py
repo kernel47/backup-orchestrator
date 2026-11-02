@@ -22,12 +22,16 @@ from orchestrator.models import (
 def audit():
     issues = []
     with db.Session() as session:
-        session.connection().exec_driver_sql("BEGIN")
-        integrity = session.execute(text("PRAGMA integrity_check")).scalar()
-        if integrity != "ok":
-            issues.append("SQLite integrity: " + str(integrity))
-        if session.execute(text("PRAGMA foreign_key_check")).all():
-            issues.append("Foreign-key violations")
+        if db.engine.dialect.name == "sqlite":
+            session.connection().exec_driver_sql("BEGIN")
+            integrity = session.execute(text("PRAGMA integrity_check")).scalar()
+            if integrity != "ok":
+                issues.append("SQLite integrity: " + str(integrity))
+            if session.execute(text("PRAGMA foreign_key_check")).all():
+                issues.append("Foreign-key violations")
+        else:
+            session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+            session.execute(text("SET TRANSACTION READ ONLY"))
         hosts = {h.id: h for h in session.scalars(select(Host))}
         zones = {z.id: z for z in session.scalars(select(Zone))}
         workers = {w.id: w for w in session.scalars(select(Worker))}

@@ -14,6 +14,7 @@ from . import auth_pages, catalog_api, db, execution_api, pages, schedules_api
 from . import service as svc
 from .config import ROOT, settings
 from .inventory_api import router as inventory_router
+from .logging_setup import RequestLoggingMiddleware
 from .middleware import require_login
 from .models import Zone
 
@@ -52,6 +53,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.middleware("http")(require_login)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.exception_handler(IntegrityError)
@@ -96,6 +98,7 @@ def health():
         "product": "Backup Orchestrator",
         "version": "0.1.0",
         "database": "ok",
+        "database_backend": db.engine.dialect.name,
         "scheduler": settings.scheduler_enabled,
         "scheduler_healthy": scheduler_ok,
     }

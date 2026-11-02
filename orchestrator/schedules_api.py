@@ -6,6 +6,7 @@ from sqlalchemy import select
 from . import db
 from . import service as svc
 from .models import HostGroup, Schedule, Window
+from .records import dt, dump
 from .schemas import GroupRunRequest, ScheduleInput
 from .security import admin
 from .workspaces import current_zone, require_zone
@@ -17,7 +18,7 @@ router = APIRouter()
 def schedules():
     with db.transaction() as s:
         return [
-            dict(svc.dump(rule), timing=svc.schedule_timing(s, rule))
+            dict(dump(rule), timing=svc.schedule_timing(s, rule))
             for rule in s.scalars(select(Schedule).order_by(Schedule.name))
         ]
 
@@ -99,7 +100,7 @@ def save_schedule(schedule_id, body):
                 ):
                     if (
                         w.snapshot.get("schedule_id") == rule.id
-                        and svc.dt(w.period_end) > svc.now()
+                        and dt(w.period_end) > svc.now()
                     ):
                         s.delete(w)
             if rule.enabled and c.legacy_schedule:
@@ -111,10 +112,10 @@ def save_schedule(schedule_id, body):
                 ):
                     if (
                         not w.snapshot.get("schedule_id")
-                        and svc.dt(w.period_end) > svc.now()
+                        and dt(w.period_end) > svc.now()
                     ):
                         s.delete(w)
-            return svc.dump(rule)
+            return dump(rule)
     except ValueError as error:
         raise HTTPException(422, str(error))
 
@@ -156,7 +157,7 @@ def targets(
                 "collector": c.name,
                 "scope": c.scope,
                 "groups": gids,
-                "hosts": [svc.dump(h) for h in hosts],
+                "hosts": [dump(h) for h in hosts],
                 "skipped": skipped,
                 "run_interval_seconds": rule.interval_seconds
                 if rule

@@ -3,24 +3,41 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from .config import settings
-from .models import Base
+from .models import LATEST_WINDOW_INDEX, RECENT_ATTEMPT_INDEX, Base
 
-Path("var").mkdir(exist_ok=True)
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False, "timeout": 30}
-    if settings.database_url.startswith("sqlite")
-    else {},
-)
-if engine.dialect.name == "sqlite":
+WRITE_LOCK = 732614902  # One transaction-scoped writer lock per PostgreSQL database.
 
-    @event.listens_for(engine, "connect")
-    def setup(conn, _):
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
+
+def make_engine(database_url):
+    url = make_url(database_url)
+    backend = url.get_backend_name()
+    if backend not in ("sqlite", "postgresql"):
+        raise ValueError("DATABASE_URL must use SQLite or PostgreSQL")
+    if url.drivername == "postgresql":
+        url = url.set(drivername="postgresql+psycopg")
+    if backend == "sqlite":
+        if url.database and url.database != ":memory:":
+            Path(url.database).parent.mkdir(parents=True, exist_ok=True)
+        result = create_engine(
+            url, connect_args={"check_same_thread": False, "timeout": 30}
+        )
+
+        @event.listens_for(result, "connect")
+        def setup(conn, _):
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+    else:
+        result = create_engine(
+            url, pool_pre_ping=True, connect_args={"connect_timeout": 10}
+        )
+    return result
+
+
+engine = make_engine(settings.database_url)
 
 
 Session = sessionmaker(engine, expire_on_commit=False)
@@ -108,9 +125,27 @@ def init():
                         {"zones": json.dumps(zones), "id": wid},
                     )
                 conn.exec_driver_sql("ALTER TABLE workers DROP COLUMN region")
+    health_added = False
+    with engine.begin() as conn:
+        if "last_success_at" not in {
+            c["name"] for c in inspect(conn).get_columns("collectors")
+        }:
+            conn.exec_driver_sql(
+                "ALTER TABLE collectors ADD COLUMN last_success_at FLOAT NOT NULL DEFAULT 0"
+            )
+            health_added = True
     from .migration_workspaces import migrate
 
     migrate()
+    if health_added:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "UPDATE collectors SET last_success_at = COALESCE("
+                "(SELECT MAX(a.finished_at) FROM attempts a JOIN windows w ON w.id=a.window_id "
+                "WHERE w.collector_id=collectors.id AND a.status='SUCCESS'), 0)"
+            )
+    LATEST_WINDOW_INDEX.create(engine, checkfirst=True)
+    RECENT_ATTEMPT_INDEX.create(engine, checkfirst=True)
     with engine.begin() as conn:
         for table in (
             "hosts",
@@ -143,8 +178,11 @@ def transaction():
     with Session() as session:
         if engine.dialect.name == "sqlite":
             session.connection().exec_driver_sql("BEGIN IMMEDIATE")
-        else:
-            raise RuntimeError("V0 : SQLite uniquement")
+        elif engine.dialect.name == "postgresql":
+            # Preserve atomic claims, retry budgets and capacity across HTTP threads.
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"), {"key": WRITE_LOCK}
+            )
         try:
             yield session
             session.commit()

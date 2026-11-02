@@ -5,8 +5,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 
 from . import db, navigation, security
-from . import service as svc
 from .models import Zone
+from .records import dump
 from .security import web_token
 from .workspaces import allowed_zones, current_zone
 
@@ -65,7 +65,7 @@ async def require_login(request: Request, call_next):
     request.state.zone = ""
     if not public:
         with db.Session() as session:
-            available = [svc.dump(z) for z in session.scalars(select(Zone))]
+            available = [dump(z) for z in session.scalars(select(Zone))]
         user = request.state.user
         if user and user["zones"] is not None:
             available = [z for z in available if z["id"] in user["zones"]]

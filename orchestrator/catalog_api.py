@@ -21,6 +21,7 @@ from .models import (
     Worker,
     Zone,
 )
+from .records import dt, dump
 from .scheduling import local_label
 from .schemas import CollectorCreate, CollectorUpdate, HostGroupInput
 from .security import admin
@@ -31,7 +32,7 @@ router = APIRouter()
 
 @router.get("/api/catalog")
 def catalog():
-    with db.transaction() as s:
+    with db.Session() as s:
         scopes = list(
             dict.fromkeys(
                 [c.scope for c in s.scalars(select(Collector))]
@@ -45,7 +46,7 @@ def catalog():
         )
         return {
             "scopes": scopes,
-            "zones": [svc.dump(z) for z in s.scalars(select(Zone))],
+            "zones": [dump(z) for z in s.scalars(select(Zone))],
             "cadences": [
                 {"seconds": seconds, "label": label} for seconds, label in CADENCES
             ],
@@ -55,9 +56,9 @@ def catalog():
 
 @router.get("/api/hosts")
 def hosts(include_archived: bool = False):
-    with db.transaction() as s:
+    with db.Session() as s:
         return [
-            svc.dump(h)
+            dump(h)
             for h in s.scalars(select(Host))
             if include_archived or not h.deleted
         ]
@@ -65,10 +66,9 @@ def hosts(include_archived: bool = False):
 
 @router.get("/api/workers")
 def workers():
-    with db.transaction() as s:
+    with db.Session() as s:
         active = Counter(
-            a.worker_id
-            for a in s.scalars(select(Attempt).where(Attempt.status == "RUNNING"))
+            s.scalars(select(Attempt.worker_id).where(Attempt.status == "RUNNING"))
         )
         next_runs = {}
         for rule in s.scalars(select(Schedule).where(Schedule.enabled == True)):
@@ -83,7 +83,7 @@ def workers():
                     next_runs[wid] = dict(timing, schedule=rule.name)
         return [
             dict(
-                svc.dump(w),
+                dump(w),
                 online=time.time() - w.heartbeat <= settings.offline_seconds,
                 active=active[w.id],
                 last_seen_seconds=max(0, int(time.time() - w.heartbeat))
@@ -99,9 +99,9 @@ def workers():
 
 @router.get("/api/host-groups")
 def host_groups():
-    with db.transaction() as s:
+    with db.Session() as s:
         return [
-            svc.dump(g)
+            dump(g)
             for g in s.scalars(
                 select(HostGroup)
                 .where(HostGroup.deleted == False)
@@ -142,15 +142,15 @@ def save_group(group_id, body):
             s.add(group)
             s.flush()
             svc.validate_groups_and_schedules(s, require_targets=False)
-            return svc.dump(group)
+            return dump(group)
     except ValueError as error:
         raise HTTPException(422, str(error))
 
 
 @router.get("/api/collectors")
 def collectors():
-    with db.transaction() as s:
-        return [svc.dump(c) for c in s.scalars(select(Collector))]
+    with db.Session() as s:
+        return [dump(c) for c in s.scalars(select(Collector))]
 
 
 @router.post("/api/collectors", dependencies=[Depends(admin)])
@@ -183,7 +183,7 @@ def create_collector(body: CollectorCreate):
         c = Collector(**values, revision=1, legacy_schedule=False)
         s.add(c)
         s.flush()
-        return svc.dump(c)
+        return dump(c)
 
 
 @router.put("/api/collectors/{collector_id}", dependencies=[Depends(admin)])
@@ -202,6 +202,6 @@ def update_collector(collector_id: str, body: CollectorUpdate):
                 Window.status.in_(["SCHEDULED", "DISABLED"]),
             )
         ):
-            if not w.snapshot.get("schedule_id") and svc.dt(w.period_end) > svc.now():
+            if not w.snapshot.get("schedule_id") and dt(w.period_end) > svc.now():
                 s.delete(w)
-        return svc.dump(c)
+        return dump(c)

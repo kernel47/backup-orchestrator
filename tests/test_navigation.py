@@ -14,12 +14,10 @@ def test_overview_is_unfiltered_and_read_only(database):
         page = client.get(
             "/?view=overview&scope=unknown&collector_id=netbackup_jobs&date=2026-10-15&period=month"
         ).text
-        assert (
-            "Infrastructure &amp; inventory" in page
-            or "Infrastructure & inventory" in page
-        )
+        assert "overview-infrastructure" not in page
+        assert "SATELLITES" in page and "TOTAL JOBS" in page and "SUCCESS RATE" in page
         assert "datadomain_capacity" in page and 'class="filters"' not in page
-        assert "Collection history" not in page and "Latest executions" in page
+        assert "Collection history" not in page and "Activity by collector" in page
         assert "overview-satellites" not in page
         with db.Session() as session:
             assert session.scalar(select(func.count()).select_from(Window)) == before
@@ -121,38 +119,104 @@ def test_collector_settings_table_view_edit_and_workspace_boundaries(database):
         )
 
 
-def test_overview_activity_uses_persisted_periods_and_bounded_recent_attempts(database):
-    from orchestrator import service as svc
-    from orchestrator.models import Attempt
-    from orchestrator.views import overview_activity
-    from tests.test_core import one_window
+def test_overview_activity_matches_days_collectors_and_workspace(database, monkeypatch):
+    from datetime import datetime, timezone
 
-    cid = one_window("SUCCESS")
-    with db.transaction() as session:
-        for n in range(8):
-            session.add(
-                Attempt(
-                    id=f"feed-{n}",
-                    window_id=cid,
-                    worker_id="EMEA-SAT-1",
-                    number=n + 1,
-                    status="SUCCESS",
-                    started_at=svc.now().timestamp() + n,
-                    finished_at=svc.now().timestamp() + n + 1,
-                    lease_until=0,
-                    result=None,
-                    logs="",
-                    context={},
+    from orchestrator import service as svc
+    from orchestrator.models import Collector, Worker
+    from orchestrator.views import overview_activity
+    from orchestrator.workspaces import current_zone
+
+    monkeypatch.setattr(
+        svc, "now", lambda: datetime(2026, 10, 15, 12, tzinfo=timezone.utc)
+    )
+    with TestClient(app) as client:
+        with db.transaction() as session:
+            for worker_id in ("EMEA-SAT-1", "APAC-SAT-1"):
+                session.get(Worker, worker_id).heartbeat = svc.now().timestamp()
+            jobs = session.scalar(
+                select(Collector).where(
+                    Collector.zone == "EMEA", Collector.name == "Jobs"
                 )
             )
-    with db.Session() as session:
-        activity = overview_activity(session)
-        assert len(activity["trend"]) == 7 and len(activity["recent"]) == 6
-        assert activity["recent"][0]["id"] == "feed-7"
-    with TestClient(app) as client:
+            policies = session.scalar(
+                select(Collector).where(
+                    Collector.zone == "EMEA", Collector.name == "Policies"
+                )
+            )
+            apac = session.scalar(
+                select(Collector).where(
+                    Collector.zone == "APAC", Collector.name == "Jobs"
+                )
+            )
+            for number, (collector, host, day, status) in enumerate(
+                [
+                    (jobs, "nbu-emea-01", "2026-10-15", "SUCCESS"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "SUCCESS"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "FAILED"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "PENDING"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "MISSING"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "SCHEDULED"),
+                    (jobs, "nbu-emea-01", "2026-10-15", "DISABLED"),
+                    (jobs, "nbu-emea-01", "2026-10-01", "SUCCESS"),
+                    (policies, "nbu-emea-02", "2026-10-14", "SUCCESS"),
+                    (apac, "nbu-apac-01", "2026-10-15", "FAILED"),
+                ]
+            ):
+                session.add(
+                    Window(
+                        id=f"activity-{number}",
+                        collector_id=collector.id,
+                        host_id=host,
+                        zone=collector.zone,
+                        period_start=f"{day}T{number:02}:00:00Z",
+                        period_end=f"{day}T{number + 1:02}:00:00Z",
+                        status=status,
+                        created_at=1,
+                        snapshot={"interval_seconds": 3600},
+                    )
+                )
+        token = current_zone.set("EMEA")
+        try:
+            with db.Session() as session:
+                activity = overview_activity(session)
+            assert len(activity["trend"]) == 7
+            assert sum(d["total"] for d in activity["trend"]) == 6
+            rows = {c["name"]: c for c in activity["collector_activity"]}
+            assert rows["Jobs"]["total"] == 5
+            assert rows["Jobs"]["counts"] == {
+                "SUCCESS": 2,
+                "FAILED": 1,
+                "PENDING": 1,
+                "MISSING": 1,
+            }
+            assert rows["Policies"]["total"] == 1
+            assert rows["Images"]["total"] == 0
+            assert sum(c["total"] for c in rows.values()) == 6
+        finally:
+            current_zone.reset(token)
         page = client.get("/?view=overview&workspace=EMEA").text
-        assert "Collection activity" in page and "Latest executions" in page
-        assert "overview-satellites" not in page and "satellite-summary" not in page
+        assert "Activity by collector" in page and "Activity by day" in page
+        assert '80.0<span class="overview-stat-unit">%</span>' in page
+        assert "4 successful · 5 completed" in page
+        satellite_card = page.split('stat-satellites"', 1)[1].split("</a>", 1)[0]
+        assert "<strong>2</strong>" in satellite_card
+        assert "1 online" in satellite_card and "1 offline" in satellite_card
+        jobs_card = page.split('stat-jobs"', 1)[1].split("</a>", 1)[0]
+        assert "<strong>7</strong>" in jobs_card
+        assert "Latest executions" not in page and "overview-infrastructure" not in page
+        activity_section = page.split('aria-labelledby="collector-activity-title"', 1)[
+            1
+        ].split("</section>", 1)[0]
+        assert '<th scope="col">Collections</th>' in activity_section
+        assert '<th scope="col">Success</th>' in activity_section
+        assert '<th scope="col">Failed</th>' in activity_section
+        assert "View history" not in activity_section
+        assert "collector-activity-track" not in activity_section
+        assert 'aria-label="Collector activity for the last 7 days"' in activity_section
         assert (
-            "feed-7" not in page
-        )  # Links reference the collection, not attempt internals.
+            client.get(
+                f"/?view=runs&collector_id={rows['Jobs']['id']}&date=2026-10-15"
+            ).status_code
+            == 200
+        )

@@ -21,6 +21,21 @@ async def post(http, path, data):
     return response.json()
 
 
+async def send_result(http, task_id, payload):
+    for attempt in range(5):
+        try:
+            return await post(http, f"/api/tasks/{task_id}/result", payload)
+        except (httpx.TransportError, httpx.HTTPStatusError) as error:
+            if (
+                isinstance(error, httpx.HTTPStatusError)
+                and error.response.status_code < 500
+            ):
+                raise
+            if attempt == 4:
+                raise
+            await asyncio.sleep(1)
+
+
 async def work(http, worker_id, task):
     body = {"worker_id": worker_id}
     execution = asyncio.create_task(execute(task))
@@ -33,13 +48,20 @@ async def work(http, worker_id, task):
             if not done:
                 await post(http, f"/api/tasks/{task['task_id']}/heartbeat", body)
         result, logs = await execution
+        log.info(
+            "Collector finished worker=%s task=%s host=%s status=%s summary=%s",
+            worker_id,
+            task["task_id"],
+            task.get("host", ""),
+            result["status"],
+            result.get("summary", ""),
+        )
+        if logs:
+            logging.getLogger("collector").info(
+                "task=%s output:\n%s", task["task_id"], logs
+            )
         payload = dict(body, result=result, logs=logs)
-        for _ in range(5):
-            try:
-                await post(http, f"/api/tasks/{task['task_id']}/result", payload)
-                break
-            except httpx.TransportError:
-                await asyncio.sleep(1)
+        await send_result(http, task["task_id"], payload)
         log.info("%s %s %s", worker_id, task["task_id"], result["status"])
     except Exception:
         log.exception("Attempt failed")
@@ -82,10 +104,13 @@ async def run(worker_id):
                         dict(body, timezone=local_zone, **metadata),
                     )
                     active = {t for t in active if not t.done()}
-                    if len(active) < settings.worker_concurrency:
+                    while (
+                        len(active) < settings.worker_concurrency and not stop.is_set()
+                    ):
                         task = await post(http, "/api/workers/claim", body)
-                        if task:
-                            active.add(asyncio.create_task(work(http, worker_id, task)))
+                        if not task:
+                            break
+                        active.add(asyncio.create_task(work(http, worker_id, task)))
                 except httpx.HTTPError:
                     log.warning("Master unavailable", exc_info=True)
                 try:

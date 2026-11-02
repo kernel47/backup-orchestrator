@@ -24,29 +24,32 @@ def main():
         )
     os.environ["ORCHESTRATOR_ENV_FILE"] = str(path.resolve())
     os.chdir(ROOT)
+
+    from orchestrator.config import settings
+    from orchestrator.logging_setup import configure_logging
+
+    log_directory = settings.log_directory
+    if not log_directory.is_absolute():
+        log_directory = ROOT / log_directory
+    configure_logging(args.role, log_directory, settings.log_level)
     if args.role == "master":
         import uvicorn
-
-        from orchestrator.config import settings
 
         uvicorn.run(
             "orchestrator.main:app",
             host=settings.master_host,
             port=settings.master_port,
             workers=1,
+            log_config=None,
+            access_log=False,
         )
     else:
         import asyncio
-        import logging
 
-        from orchestrator.config import settings
         from worker.agent import run
 
         if not settings.worker_id:
             parser.error("Set WORKER_ID in the worker configuration")
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-        )
         asyncio.run(run(settings.worker_id))
 
 

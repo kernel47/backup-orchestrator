@@ -59,7 +59,7 @@ def test_only_zones_in_public_model_and_old_filters_refused(database):
         assert all("region" not in x for x in client.get("/api/hosts").json())
         assert all("region" not in x for x in client.get("/api/workers").json())
         html = client.get("/").text
-        assert 'name="region"' not in html and 'name="zone"' in html
+        assert 'name="region"' not in html and 'name="workspace"' in html
         assert (
             client.get("/api/collections", params={"region": "EMEA"}).status_code == 422
         )

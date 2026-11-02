@@ -65,7 +65,7 @@ def test_attempt_history_pagination(database):
         assert "<nav" not in first.split("<title>")[1].split("</title>")[0]
 
 
-def test_hour_filter_and_status_selection_survive_drilldown(database):
+def test_status_selection_survives_drilldown_without_hour_filter(database):
     from tests.test_core import one_window
 
     one_window("SUCCESS")
@@ -82,8 +82,8 @@ def test_hour_filter_and_status_selection_survive_drilldown(database):
         ]:
             page = client.get(base + "&status=" + status)
             assert page.status_code == 200
-            assert "10:00–11:00 UTC" in page.text and "hour-grid" not in page.text
-            assert 'aria-current="true"' in page.text and 'name="hour"' in page.text
+            assert "10:00–11:00 UTC" not in page.text and "hour-grid" not in page.text
+            assert 'aria-current="true"' in page.text and 'name="hour"' not in page.text
 
 
 def test_live_controls_only_on_monitoring_views(database):
@@ -173,12 +173,14 @@ def test_daily_workspace_catalogue_and_progressive_filters(database):
             'aria-label="Zone workspace"' in page and "Daily collection health" in page
         )
         assert "Collection zones" not in page and "hour-grid" not in page
-        assert 'class="advanced-filters" >' in page
+        assert 'class="advanced-filters"' not in page
+        assert 'name="host_group_id"' in page and 'name="collector_id"' in page
         assert "collector_id=netbackup_jobs" in page and "view=runs" in page
         detail = client.get(
             "/?view=runs&collector_id=netbackup_jobs&workspace=EMEA&host=nbu-emea-01&date=2026-10-15"
         ).text
-        assert 'class="advanced-filters" open' in detail and "filter-active" in detail
+        assert "Advanced filters" not in detail
+        assert '<option value="nbu-emea-01"' in detail
         assert "Back to collectors" in detail
 
 
@@ -200,3 +202,66 @@ def test_collectors_defaults_to_week_and_matches_history_period_overview(databas
             "Collection period navigation"
             not in client.get("/?view=runs&date=2026-10-15").text
         )
+
+
+def test_history_linked_filters_reset_and_individual_retry(database):
+    import re
+    from html import unescape
+
+    from sqlalchemy import select
+
+    from orchestrator.models import Window
+    from tests.test_core import one_window
+    from tests.test_host_groups import AUTH
+
+    wid = one_window("FAILED")
+    with db.transaction() as session:
+        window = session.get(Window, wid)
+        window.snapshot = dict(window.snapshot, host_group_ids=["demo_netbackup_emea"])
+    with TestClient(app) as client:
+        response = client.get(
+            "/?view=runs&workspace=EMEA&scope=NetBackup&collector_id=netbackup_jobs"
+            "&host_group_id=demo_netbackup_emea&host=nbu-emea-01&date=2026-10-15&status=FAILED"
+        )
+        assert response.status_code == 200
+        form = response.text.split(
+            'class="filters compact-filters history-filters"', 1
+        )[1].split("</form>", 1)[0]
+        assert re.findall(
+            r'name="(period|date|scope|collector_id|host_group_id|host)"', form
+        ) == ["period", "date", "scope", "collector_id", "host_group_id", "host"]
+        assert (
+            "Advanced filters" not in response.text
+            and 'name="hour"' not in response.text
+        )
+        assert (
+            'id="select-all"' not in response.text
+            and 'name="collection"' not in response.text
+        )
+        assert f'data-retry-one="{wid}"' in response.text
+        assert 'data-scope="NetBackup"' in form and "data-groups=" in form
+        assert "hidden disabled>Capacity</option>" in form
+        assert "hidden disabled>dd-emea-01</option>" in form
+        reset_url = unescape(
+            re.search(r'<a class="button" href="([^"]+)">Reset</a>', form).group(1)
+        )
+        reset = client.get(reset_url)
+        assert reset.status_code == 200
+        reset_form = reset.text.split(
+            'class="filters compact-filters history-filters"', 1
+        )[1].split("</form>", 1)[0]
+        assert (
+            '<option value="netbackup_jobs" data-scope="NetBackup" selected'
+            not in reset_form
+        )
+        assert '<option value="demo_netbackup_emea" selected' not in reset_form
+        assert 'name="status"' not in reset_form
+        retried = client.post(
+            "/api/collections/retry", headers=AUTH, json={"ids": [wid]}
+        )
+        assert retried.status_code == 200 and retried.json()["ids"] == [wid]
+        with db.Session() as session:
+            pending = list(
+                session.scalars(select(Window.id).where(Window.status == "PENDING"))
+            )
+            assert pending == [wid]

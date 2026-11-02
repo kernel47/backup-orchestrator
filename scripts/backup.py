@@ -14,8 +14,10 @@ from orchestrator.config import settings
 
 def backup(destination, check_restore=False):
     url = make_url(settings.database_url)
-    if url.drivername != "sqlite" or not url.database:
-        raise ValueError("This backup command supports a file-based SQLite master")
+    if url.get_backend_name() != "sqlite" or not url.database:
+        raise ValueError(
+            "Use pg_dump/pg_restore for PostgreSQL; this command backs up file-based SQLite"
+        )
     source = Path(url.database).resolve()
     destination = Path(destination).resolve()
     if not source.exists() or source == destination or destination.exists():

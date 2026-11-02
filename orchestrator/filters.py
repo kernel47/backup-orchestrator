@@ -5,6 +5,7 @@ from datetime import timedelta
 from fastapi import HTTPException, Request
 
 from . import service as svc
+from .records import bounds, dt, iso
 from .workspaces import current_zone
 
 
@@ -33,16 +34,16 @@ def filters(
         raise HTTPException(422, "Use the zone filter instead of region")
     if date:
         try:
-            svc.bounds(date)
+            bounds(date)
         except ValueError:
             raise HTTPException(422, "Expected date: YYYY-MM-DD")
     if hour:
         if not hour.isdigit() or not 0 <= int(hour) < 24:
             raise HTTPException(422, "Hour must be between 0 and 23")
-        anchor = svc.dt((date or svc.now().strftime("%Y-%m-%d")) + "T00:00:00Z")
+        anchor = dt((date or svc.now().strftime("%Y-%m-%d")) + "T00:00:00Z")
         if request.query_params.get("period", "day") == "day":
-            start = svc.iso(anchor + timedelta(hours=int(hour)))
-            end = svc.iso(anchor + timedelta(hours=int(hour) + 1))
+            start = iso(anchor + timedelta(hours=int(hour)))
+            end = iso(anchor + timedelta(hours=int(hour) + 1))
     return {
         k: v
         for k, v in {

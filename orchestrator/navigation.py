@@ -205,6 +205,9 @@ def normalize(params, view):
             )
             if data["scope"] not in known:
                 data.pop("scope")
+    if view == "runs":
+        for key in ("hour", "start", "end"):
+            data.pop(key, None)
     if view != "runs":
         data.pop("status", None)
     return data
@@ -224,16 +227,6 @@ class BrowserNavigation:
 
     def apply(self, request, zone):
         self.zone = zone
-        if self.view == "collectors" and self.params.get("collector_id"):
-            from . import db
-            from .models import Collector
-
-            with db.Session() as session:
-                exists = session.get(Collector, self.params["collector_id"]) is not None
-            if exists:
-                self.view = "runs"
-            else:
-                self.params.pop("collector_id")
         if self.view == "settings" and self.params.get("section") == "inventory":
             self.view = "hosts"
             self.params = {}

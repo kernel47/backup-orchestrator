@@ -6,42 +6,35 @@ from datetime import datetime, timedelta, timezone
 
 def latest_collector_health(session):
     """One latest recorded period per host, across each satellite's local clock."""
-    from sqlalchemy import func, select
+    from sqlalchemy import or_, select
 
     from . import service as svc
-    from .models import Attempt, Collector, Host, Schedule, Window
+    from .models import Collector, Host, Schedule, Window
 
-    ranked = (
-        select(
-            Window.id,
-            func.row_number()
-            .over(
-                partition_by=(Window.collector_id, Window.host_id),
-                order_by=(Window.period_start.desc(), Window.created_at.desc()),
-            )
-            .label("position"),
+    latest_id = (
+        select(Window.id)
+        .where(
+            Window.host_id == Host.id,
+            Window.zone == Host.zone,
+            Window.collector_id == Collector.id,
+            Window.status.notin_(["SCHEDULED", "DISABLED"]),
         )
-        .where(Window.status.notin_(["SCHEDULED", "DISABLED"]))
-        .subquery()
-    )
-    latest = list(
-        session.scalars(
-            select(Window)
-            .join(ranked, Window.id == ranked.c.id)
-            .where(ranked.c.position == 1)
+        .order_by(
+            Window.period_start.desc(), Window.created_at.desc(), Window.id.desc()
         )
+        .limit(1)
+        .correlate(Host, Collector)
+        .scalar_subquery()
     )
+    latest_ids = (
+        select(latest_id)
+        .select_from(Host)
+        .join(Collector, or_(Collector.zone == Host.zone, Collector.zone == ""))
+    )
+    latest = list(session.scalars(select(Window).where(Window.id.in_(latest_ids))))
     by_collector = {}
     for window in latest:
         by_collector.setdefault(window.collector_id, {})[window.host_id] = window
-    successes = dict(
-        session.execute(
-            select(Window.collector_id, func.max(Attempt.finished_at))
-            .join(Attempt, Attempt.window_id == Window.id)
-            .where(Attempt.status == "SUCCESS")
-            .group_by(Window.collector_id)
-        ).all()
-    )
     result = {}
     for collector in session.scalars(select(Collector)):
         recorded = by_collector.get(collector.id, {})
@@ -102,7 +95,7 @@ def latest_collector_health(session):
         )
         if stale and status == "SUCCESS":
             status = "MISSING"
-        last = successes.get(collector.id)
+        last = collector.last_success_at
         result[collector.id] = {
             "counts": counts,
             "expected": len(ids),
@@ -120,70 +113,51 @@ def latest_collector_health(session):
 
 
 def overview_activity(session):
-    """Seven days of persisted periods and a bounded feed of execution attempts."""
+    """Seven days of collection periods, grouped by day and collector in SQL."""
     from sqlalchemy import func, select
 
     from . import service as svc
-    from .models import Attempt, Collector, Window
+    from .models import Collector, Window
 
     today = svc.now().replace(hour=0, minute=0, second=0, microsecond=0)
     days = [(today - timedelta(days=n)).strftime("%Y-%m-%d") for n in range(6, -1, -1)]
     grouped = {day: Counter() for day in days}
-    for day, status, count in session.execute(
-        select(func.substr(Window.period_start, 1, 10), Window.status, func.count())
+    by_collector = {}
+    day_column = func.substr(Window.period_start, 1, 10)
+    for day, collector_id, status, count in session.execute(
+        select(day_column, Window.collector_id, Window.status, func.count())
         .where(
             Window.period_start >= days[0] + "T00:00:00Z",
             Window.period_start < svc.iso(today + timedelta(days=1)),
+            Window.status.notin_(["SCHEDULED", "DISABLED"]),
         )
-        .group_by(func.substr(Window.period_start, 1, 10), Window.status)
+        .group_by(day_column, Window.collector_id, Window.status)
     ):
-        grouped[day][status] = count
+        grouped[day][status] += count
+        by_collector.setdefault(collector_id, Counter())[status] += count
     trend = [
-        {
-            "day": day,
-            "counts": counts,
-            "total": sum(
-                v for k, v in counts.items() if k not in ("SCHEDULED", "DISABLED")
-            ),
-        }
+        {"day": day, "counts": counts, "total": sum(counts.values())}
         for day, counts in grouped.items()
     ]
-    maximum = max((d["total"] for d in trend), default=0) or 1
-    recent = []
-    # Select only summary fields: do not load historical logs or report datasets.
-    for (
-        attempt,
-        window_id,
-        host,
-        collector,
-        status,
-        started,
-        finished,
-    ) in session.execute(
-        select(
-            Attempt.id,
-            Window.id,
-            Window.host_id,
-            Collector.name,
-            Attempt.status,
-            Attempt.started_at,
-            Attempt.finished_at,
+    activity = []
+    for cid, name, scope in session.execute(
+        select(Collector.id, Collector.name, Collector.scope).order_by(
+            Collector.scope, Collector.name, Collector.id
         )
-        .join(Window, Attempt.window_id == Window.id)
-        .join(Collector, Window.collector_id == Collector.id)
-        .order_by(Attempt.started_at.desc(), Attempt.id)
-        .limit(6)
     ):
-        recent.append(
+        counts = by_collector.get(cid, Counter())
+        activity.append(
             {
-                "id": attempt,
-                "window_id": window_id,
-                "host": host,
-                "collector": collector,
-                "status": status,
-                "time": svc.iso(
-                    datetime.fromtimestamp(finished or started, timezone.utc)
-                ),
+                "id": cid,
+                "name": name,
+                "scope": scope,
+                "counts": counts,
+                "total": sum(counts.values()),
             }
         )
-    return {"trend": trend, "trend_max": maximum, "recent": recent}
+    return {
+        "trend": trend,
+        "trend_max": max((d["total"] for d in trend), default=0) or 1,
+        "collector_activity": activity,
+        "collector_activity_max": max((c["total"] for c in activity), default=0) or 1,
+    }

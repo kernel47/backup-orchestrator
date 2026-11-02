@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+from typing import Literal
 
 import yaml
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,10 +24,13 @@ class Settings(BaseSettings):
     workspace_name: str = "Backup Orchestrator workspace"
     worker_id: str = ""
     worker_timezone: str = ""
-    worker_concurrency: int = 2
+    worker_concurrency: int = Field(default=2, ge=1, le=32)
+    host_concurrency: int = Field(default=1, ge=1, le=32)
     worker_verify_ssl: bool = True
     master_host: str = "127.0.0.1"
     master_port: int = 8000
+    log_directory: Path = Path("var/logs")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     model_config = SettingsConfigDict(env_file=str(ROOT / ".env"), extra="ignore")
 
 

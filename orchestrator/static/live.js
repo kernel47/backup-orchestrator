@@ -54,7 +54,7 @@
       window.orchestratorMutationPending > 0 ||
       Date.now() - lastInteraction < 8000 ||
       document.querySelector(
-        'dialog[open],.select-trigger[aria-expanded="true"],.orchestrator-calendar:not([hidden]),[name="collection"]:checked,#select-all:checked,details[open]:not(.advanced-filters)',
+        'dialog[open],.select-trigger[aria-expanded="true"],.orchestrator-calendar:not([hidden]),details[open]:not(.advanced-filters)',
       ) ||
       document.activeElement?.matches(
         "input,select,textarea,.select-trigger,.date-trigger",

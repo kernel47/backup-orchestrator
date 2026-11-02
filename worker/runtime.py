@@ -9,6 +9,8 @@ import yaml
 
 from orchestrator.config import ROOT, load, settings
 
+from .launch import working_directory
+
 
 def runtime_info():
     url = urlsplit(settings.master_url)
@@ -38,6 +40,11 @@ def runtime_info():
             available = bool(
                 isinstance(executable, str) and executable and shutil.which(executable)
             )
+            if available:
+                try:
+                    working_directory(definition)
+                except (OSError, ValueError):
+                    available = False
             kind = "command"
         scripts.append({"alias": str(alias)[:80], "kind": kind, "available": available})
     return {

@@ -96,9 +96,13 @@ def test_workspace_reads_writes_and_cookie_are_isolated(database):
         )
 
 
-def test_daily_grid_history_hour_filter_and_replay(database):
+def test_daily_grid_history_and_individual_replay(database):
     with DashboardClient(app) as client:
-        cid = client.get("/api/collectors", headers=auth("EMEA")).json()[0]["id"]
+        cid = next(
+            c["id"]
+            for c in client.get("/api/collectors", headers=auth("EMEA")).json()
+            if c["scope"] == "NetBackup" and c["name"] == "Jobs"
+        )
         with db.transaction() as session:
             ids = svc.expected(session, "2026-10-15", cid, "nbu-emea-01", zone="EMEA")
             w = session.get(Window, ids[0])
@@ -119,7 +123,9 @@ def test_daily_grid_history_hour_filter_and_replay(database):
                     context={},
                 )
             )
-        page = client.get("/?view=collectors&workspace=EMEA&date=2026-10-15").text
+        page = client.get(
+            "/?view=collectors&workspace=EMEA&scope=NetBackup&date=2026-10-15"
+        ).text
         assert "Daily collection health" in page and "1 recovered" in page
         assert "EXPECTED COLLECTIONS" in page and "RUNNING / PENDING" in page
         assert "hour-grid" not in page and "view=runs" in page
@@ -128,11 +134,14 @@ def test_daily_grid_history_hour_filter_and_replay(database):
             + cid
             + "&date=2026-10-15&hour=0&status=SUCCESS"
         ).text
-        assert "Hour (UTC)" in history and "00:00–01:00 UTC" in history
+        assert "Hour (UTC)" not in history and 'name="hour"' not in history
+        assert (
+            'name="collection"' not in history and 'id="retry-selected"' not in history
+        )
         assert (
             "RECOVERED" in history
             and "hour-grid" not in history
-            and "Run again" in history
+            and "Run again" in client.get("/collections/" + wid).text
         )
         assert (
             "EXPECTED COLLECTIONS" not in history and "RUNNING / PENDING" not in history

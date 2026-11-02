@@ -30,11 +30,7 @@ def dashboard(
     page_size: int = Query(25, ge=10, le=100),
     section: str = Query("collectors", pattern="^(collectors|inventory)$"),
 ):
-    period = period or (
-        "week"
-        if view == "collectors" and not selected_filters.get("collector_id")
-        else "day"
-    )
+    period = period or ("week" if view == "collectors" else "day")
     if view in ("technical-architecture", "documentation"):
         return render_documentation(request, view)
     if not request.state.workspace_zones:
@@ -63,8 +59,6 @@ def dashboard(
         return render_administration(request, view, page, page_size)
     if view in ("hosts", "groups", "schedules"):
         return render_inventory(request, view)
-    if view == "collectors" and selected_filters.get("collector_id"):
-        return RedirectResponse(str(request.url.include_query_params(view="runs")), 303)
     return render_history(request, selected_filters, view, period, page, page_size)
 
 

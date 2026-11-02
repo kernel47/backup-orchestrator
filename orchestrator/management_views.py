@@ -1,17 +1,16 @@
 """Page rendering for configuration, inventory and the global overview."""
 
 from collections import Counter
-from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import db, inventory_api
 from . import service as svc
 from .cadences import CADENCES, SCHEDULE_CADENCES
 from .catalog_api import catalog, collectors, host_groups, hosts, workers
 from .config import settings
-from .models import Window
+from .models import Window, Worker
 from .schedules_api import schedules
 from .security import web_token
 from .views import latest_collector_health, overview_activity
@@ -21,14 +20,17 @@ from .web import templates
 def render_overview(request):
     today = svc.now().strftime("%Y-%m-%d")
     with db.Session() as session:
-        totals = Counter(
-            session.scalars(
-                select(Window.status).where(
-                    Window.period_start >= today + "T00:00:00Z",
-                    Window.period_start
-                    < svc.iso(svc.dt(today + "T00:00:00Z") + timedelta(days=1)),
-                )
-            )
+        totals = dict(
+            session.execute(
+                select(Window.status, func.count()).group_by(Window.status)
+            ).all()
+        )
+        heartbeats = list(session.scalars(select(Worker.heartbeat)))
+        online = sum(
+            1
+            for heartbeat in heartbeats
+            if heartbeat
+            and svc.now().timestamp() - heartbeat <= settings.offline_seconds
         )
         health = latest_collector_health(session)
         activity = overview_activity(session)
@@ -40,11 +42,13 @@ def render_overview(request):
             "view": "overview",
             "overview": True,
             "collectors": collectors(),
-            "hosts": hosts(),
-            "groups": host_groups(),
-            "catalog": catalog(),
+            "satellites": {
+                "total": len(heartbeats),
+                "online": online,
+                "offline": len(heartbeats) - online,
+            },
             "today": today,
-            "counts": totals,
+            "counts": Counter(totals),
             "health": health,
             **activity,
             "csrf": web_token(request),

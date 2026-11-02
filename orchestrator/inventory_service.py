@@ -12,6 +12,7 @@ from . import db
 from . import service as svc
 from .config import ROOT
 from .models import Host, InventorySync, Worker, Zone
+from .records import dump
 from .workspaces import current_zone
 
 
@@ -48,8 +49,8 @@ def validate_routing(session, record):
 
 
 def fingerprint(session):
-    hosts = [svc.dump(h) for h in session.scalars(select(Host).order_by(Host.id))]
-    zones = [svc.dump(z) for z in session.scalars(select(Zone).order_by(Zone.id))]
+    hosts = [dump(h) for h in session.scalars(select(Host).order_by(Host.id))]
+    zones = [dump(z) for z in session.scalars(select(Zone).order_by(Zone.id))]
     return hashlib.sha256(
         json.dumps(
             [

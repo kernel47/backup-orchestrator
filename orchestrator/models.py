@@ -1,5 +1,8 @@
-from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+JSON_DATA = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -8,11 +11,11 @@ class Base(DeclarativeBase):
 
 class Worker(Base):
     hostname: Mapped[str] = mapped_column(default="")
-    runtime: Mapped[dict] = mapped_column(JSON, default=dict)
+    runtime: Mapped[dict] = mapped_column(JSON_DATA, default=dict)
     __tablename__ = "workers"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    scopes: Mapped[list] = mapped_column(JSON)
-    zones: Mapped[list] = mapped_column(JSON, default=list)
+    scopes: Mapped[list] = mapped_column(JSON_DATA)
+    zones: Mapped[list] = mapped_column(JSON_DATA, default=list)
     concurrency: Mapped[int]
     heartbeat: Mapped[float] = mapped_column(default=0)
     timezone: Mapped[str] = mapped_column(default="")
@@ -28,7 +31,7 @@ class Host(Base):
     enabled: Mapped[bool]
     preferred_worker: Mapped[str]
     fallback_worker: Mapped[str]
-    parameters: Mapped[dict] = mapped_column(JSON)
+    parameters: Mapped[dict] = mapped_column(JSON_DATA)
     discovered: Mapped[bool] = mapped_column(default=False)
     deleted: Mapped[bool] = mapped_column(default=False)
     source_id: Mapped[str] = mapped_column(default="")
@@ -45,9 +48,10 @@ class Collector(Base):
     timeout_seconds: Mapped[int]
     max_retries: Mapped[int]
     enabled: Mapped[bool]
-    parameters: Mapped[dict] = mapped_column(JSON)
+    parameters: Mapped[dict] = mapped_column(JSON_DATA)
     revision: Mapped[int] = mapped_column(default=1)
     legacy_schedule: Mapped[bool] = mapped_column(default=True)
+    last_success_at: Mapped[float] = mapped_column(default=0)
 
 
 class Window(Base):
@@ -63,7 +67,7 @@ class Window(Base):
     available_at: Mapped[float] = mapped_column(default=0)
     retry_base: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[float]
-    snapshot: Mapped[dict] = mapped_column(JSON)
+    snapshot: Mapped[dict] = mapped_column(JSON_DATA)
 
 
 class Attempt(Base):
@@ -77,9 +81,9 @@ class Attempt(Base):
     started_at: Mapped[float]
     finished_at: Mapped[float | None]
     lease_until: Mapped[float]
-    result: Mapped[dict | None] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON_DATA)
     logs: Mapped[str] = mapped_column(default="")
-    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    context: Mapped[dict] = mapped_column(JSON_DATA, default=dict)
 
 
 class HostGroup(Base):
@@ -88,7 +92,7 @@ class HostGroup(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str]
     description: Mapped[str] = mapped_column(default="")
-    host_ids: Mapped[list] = mapped_column(JSON, default=list)
+    host_ids: Mapped[list] = mapped_column(JSON_DATA, default=list)
     enabled: Mapped[bool] = mapped_column(default=True)
     deleted: Mapped[bool] = mapped_column(default=False)
 
@@ -103,11 +107,11 @@ class Schedule(Base):
     kind: Mapped[str] = mapped_column(default="interval")
     local_time: Mapped[str] = mapped_column(default="07:00")
     created_at: Mapped[float] = mapped_column(default=0)
-    host_group_ids: Mapped[list] = mapped_column(JSON, default=list)
-    zones: Mapped[list] = mapped_column(JSON, default=list)
+    host_group_ids: Mapped[list] = mapped_column(JSON_DATA, default=list)
+    zones: Mapped[list] = mapped_column(JSON_DATA, default=list)
     interval_seconds: Mapped[int]
     enabled: Mapped[bool] = mapped_column(default=True)
-    parameters: Mapped[dict] = mapped_column(JSON, default=dict)
+    parameters: Mapped[dict] = mapped_column(JSON_DATA, default=dict)
 
 
 class Zone(Base):
@@ -123,7 +127,7 @@ class InventorySource(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str]
     kind: Mapped[str]
-    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    config: Mapped[dict] = mapped_column(JSON_DATA, default=dict)
     enabled: Mapped[bool] = mapped_column(default=True)
 
 
@@ -134,7 +138,7 @@ class InventorySync(Base):
     source_id: Mapped[str]
     created_at: Mapped[float]
     status: Mapped[str] = mapped_column(default="PREVIEW")
-    payload: Mapped[dict] = mapped_column(JSON)
+    payload: Mapped[dict] = mapped_column(JSON_DATA)
 
 
 class Scope(Base):
@@ -147,5 +151,20 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, primary_key=True)
     password_hash: Mapped[str]
     role: Mapped[str] = mapped_column(default="viewer")
-    zones: Mapped[list] = mapped_column(JSON, default=list)
+    zones: Mapped[list] = mapped_column(JSON_DATA, default=list)
     enabled: Mapped[bool] = mapped_column(default=True)
+
+
+LATEST_WINDOW_INDEX = Index(
+    "ix_windows_latest",
+    Window.zone,
+    Window.collector_id,
+    Window.host_id,
+    Window.period_start.desc(),
+    Window.created_at.desc(),
+    Window.id.desc(),
+)
+
+RECENT_ATTEMPT_INDEX = Index(
+    "ix_attempts_recent", Attempt.started_at.desc(), Attempt.id.desc()
+)

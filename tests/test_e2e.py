@@ -22,6 +22,7 @@ def test_real_http_workers_and_historical_retry(tmp_path):
     env = dict(
         os.environ,
         DATABASE_URL="sqlite:///" + str(tmp_path / "e2e.db"),
+        LOG_DIRECTORY=str(tmp_path / "logs"),
         MASTER_URL=f"http://127.0.0.1:{port}",
         SCHEDULER_ENABLED="false",
         POLL_SECONDS=".1",
@@ -185,6 +186,7 @@ def test_clean_master_file_inventory_and_env_only_worker(tmp_path):
     env = dict(
         os.environ,
         DATABASE_URL="sqlite:///" + str(tmp_path / "fresh.db"),
+        LOG_DIRECTORY=str(tmp_path / "logs"),
         MASTER_URL=f"http://127.0.0.1:{port}",
         SCHEDULER_ENABLED="false",
         ADMIN_TOKEN="fresh-admin",

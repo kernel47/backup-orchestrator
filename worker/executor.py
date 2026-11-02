@@ -2,25 +2,32 @@ import asyncio
 import json
 import os
 import signal
-import sys
 import tempfile
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
-from orchestrator.config import ROOT, load
+import yaml
+
+from orchestrator.config import load
 from orchestrator.schemas import CollectorResult
-from worker.commands import build_command
+from worker.launch import prepare_launch
 from worker.reports import backup_collector_report
+
+REPORT_LIMIT = 65536
+LOG_LIMIT = 16000
+
+
+def log_tail(stream):
+    stream.seek(0, 2)
+    stream.seek(max(0, stream.tell() - LOG_LIMIT))
+    return stream.read().decode(errors="replace")
 
 
 def failure(reason, summary):
     return {
-        "status": "TIMEOUT"
-        if reason == "TIMEOUT"
-        else "UNKNOWN"
-        if reason == "INVALID_REPORT"
-        else "FAILURE",
+        "status": {"TIMEOUT": "TIMEOUT", "INVALID_REPORT": "UNKNOWN"}.get(
+            reason, "FAILURE"
+        ),
         "summary": summary,
         "error": summary,
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -31,40 +38,20 @@ def failure(reason, summary):
 async def _execute(task):
     try:
         catalog = load("worker_scripts.yaml")
-        definition = catalog.get(task["script"])
-        if definition is None:
-            raise ValueError("Script is not allowed on this satellite")
-        report_format = (
-            definition.get("report_format", "standard")
-            if isinstance(definition, dict)
-            else "standard"
-        )
-        if report_format not in ("standard", "backup_collector"):
-            raise ValueError("Unknown command report format")
-        command = (
-            build_command(definition, task)
-            if isinstance(definition, dict)
-            else [sys.executable, "-m", "worker.runner", task["script"]]
-        )
-        working_directory = ROOT
-        if isinstance(definition, dict) and "working_directory" in definition:
-            directory = definition["working_directory"]
-            if not isinstance(directory, str) or not directory.strip():
-                raise ValueError("working_directory must be a nonempty path")
-            working_directory = Path(directory)
-            if not working_directory.is_absolute():
-                working_directory = ROOT / working_directory
-            if not working_directory.is_dir():
-                raise ValueError(
-                    "Collector working_directory does not exist or is inaccessible"
-                )
+    except (OSError, ValueError, yaml.YAMLError):
+        return failure(
+            "COMMAND_CONFIG",
+            "Unable to read worker_scripts.yaml; check YAML and permissions",
+        ), ""
+    try:
+        launch = prepare_launch(catalog, task)
     except (ValueError, TypeError, KeyError) as error:
         return failure("COMMAND_CONFIG", str(error)), ""
     with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
         try:
             process = await asyncio.create_subprocess_exec(
-                *command,
-                cwd=working_directory,
+                *launch.command,
+                cwd=launch.working_directory,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=output,
                 stderr=errors,
@@ -81,16 +68,13 @@ async def _execute(task):
                 timeout=max(0.1, task["timeout_seconds"] - 0.5),
             )
             output.seek(0)
-            raw = output.read(65537)
-            errors.seek(0, 2)
-            size = errors.tell()
-            errors.seek(max(0, size - 16000))
-            logs = errors.read().decode(errors="replace")
-            if len(raw) > 65536:
+            raw = output.read(REPORT_LIMIT + 1)
+            logs = log_tail(errors)
+            if len(raw) > REPORT_LIMIT:
                 return failure("INVALID_REPORT", "Execution report exceeds 64 KB"), logs
             try:
                 payload = json.loads(raw)
-                if report_format == "backup_collector":
+                if launch.report_format == "backup_collector":
                     payload = backup_collector_report(payload)
                 report = CollectorResult.model_validate(payload).model_dump(mode="json")
             except ValueError:
@@ -115,12 +99,7 @@ async def _execute(task):
             await process.wait()
             if isinstance(error, asyncio.CancelledError):
                 raise
-            errors.seek(0, 2)
-            size = errors.tell()
-            errors.seek(max(0, size - 16000))
-            return failure(
-                "TIMEOUT", "Collector execution timed out"
-            ), errors.read().decode(errors="replace")
+            return failure("TIMEOUT", "Collector execution timed out"), log_tail(errors)
 
 
 async def execute(task):

@@ -1,0 +1,16 @@
+<form class="filters compact-filters collector-filters" method="get">
+  <input type="hidden" name="view" value="collectors">
+  <input type="hidden" name="scope" value="{{filters.get('scope','')}}">
+  <input type="hidden" name="workspace" value="{{active_zone}}">
+  <div class="basic-filters">
+    <label>View<select name="period">{% for value,label in [('day','Day'),('week','Week'),('month','Month')] %}<option value="{{value}}" {{'selected' if period==value}}>{{label}}</option>{% endfor %}</select></label>
+    <label>Collection date<input type="date" name="date" value="{{filters.date}}"></label>
+    <label>Collector<select name="collector_id"><option value="">All collectors</option>{% for c in collectors if c.scope==filters.get('scope') %}<option value="{{c.id}}" {{'selected' if filters.get('collector_id')==c.id}}>{{c.name}}</option>{% endfor %}</select></label>
+    <label>Host group<select name="host_group_id"><option value="">All host groups</option>{% for group in host_groups %}<option value="{{group.id}}" {{'selected' if filters.get('host_group_id')==group.id}}>{{group.name}}</option>{% endfor %}</select></label>
+    <label>Host<select name="host"><option value="">All hosts</option>{% for h in hosts %}<option value="{{h.id}}" {{'selected' if filters.get('host')==h.id}}>{{h.id}}</option>{% endfor %}</select></label>
+    <div class="collector-filter-actions">
+      <button type="submit" class="button primary filter-apply">Apply</button>
+      <a class="button" href="/?view=collectors&workspace={{active_zone|urlencode}}&scope={{filters.get('scope','')|urlencode}}&period=week&date={{today}}&page=1">Reset</a>
+    </div>
+  </div>
+</form>

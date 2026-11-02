@@ -135,3 +135,52 @@ def test_collection_detail_path_keeps_zone_and_restores_pagination(database):
         again = client.get("/w/EMEA/collections/" + cid)
         assert "<strong>26–26</strong>" in again.text
         assert client.get("/w/APAC/collections/" + cid).status_code == 404
+
+
+def test_collector_filters_stay_on_collectors_and_reset_saved_selection(database):
+    import re
+    from html import unescape
+
+    one_window("SUCCESS")
+    for headers in ({"Accept": "application/json"}, BROWSER):
+        with DashboardClient(app, headers=headers) as client:
+            response = client.get(
+                "/?view=collectors&workspace=EMEA&scope=NetBackup"
+                "&collector_id=netbackup_jobs&host=nbu-emea-01"
+                "&host_group_id=demo_netbackup_emea&date=2026-10-15&period=day"
+            )
+            assert response.status_code == 200
+            assert "EXPECTED COLLECTIONS" in response.text
+            assert "Daily collection health" in response.text
+            assert 'name="view" value="collectors"' in response.text
+            form = response.text.split(
+                'class="filters compact-filters collector-filters"', 1
+            )[1].split("</form>", 1)[0]
+            fields = re.findall(
+                r'name="(period|date|host_group_id|host|collector_id)"', form
+            )
+            assert fields == ["period", "date", "collector_id", "host_group_id", "host"]
+            assert '<option value="netbackup_jobs" selected>' in form
+            assert '<option value="nbu-emea-01" selected>' in form
+            assert "Apply</button>" in form
+            table = response.text.split(
+                'class="panel history-panel daily-collectors', 1
+            )[1]
+            assert "<strong>Jobs</strong>" in table
+            assert "<strong>Policies</strong>" not in table
+            reset_url = unescape(
+                re.search(r'<a class="button" href="([^"]+)">Reset</a>', form).group(1)
+            )
+            reset = client.get(reset_url)
+            assert reset.status_code == 200
+            assert "period-week" in reset.text
+            assert "<strong>Policies</strong>" in reset.text
+            reset_form = reset.text.split(
+                'class="filters compact-filters collector-filters"', 1
+            )[1].split("</form>", 1)[0]
+            assert '<option value="netbackup_jobs" selected>' not in reset_form
+            assert '<option value="nbu-emea-01" selected>' not in reset_form
+            if headers == BROWSER:
+                assert str(reset.url).endswith("/w/EMEA/collectors")
+                again = client.get("/w/EMEA/collectors")
+                assert "<strong>Policies</strong>" in again.text

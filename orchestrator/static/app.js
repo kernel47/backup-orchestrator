@@ -60,7 +60,7 @@ async function action(button, path, method, data, success, redirect = null) {
 // Delegation keeps collection actions working after fragment replacement.
 document.addEventListener("click", (event) => {
   const b = event.target.closest(
-    "[data-plan],[data-retry-one],[data-rerun-one],#retry-selected,#rerun-selected",
+    "[data-plan],[data-retry-one],[data-rerun-one]",
   );
   if (!b || b.disabled) return;
   if (b.matches("[data-plan]"))
@@ -100,40 +100,6 @@ document.addEventListener("click", (event) => {
       },
       (o) => `${o.ids.length} collection queued.`,
     );
-  else {
-    const mode = b.id === "rerun-selected" ? "rerun" : "retry";
-    const ids = [...document.querySelectorAll('[name="collection"]:checked')]
-      .filter((c) =>
-        mode === "rerun"
-          ? c.dataset.status === "SUCCESS"
-          : c.dataset.status !== "SUCCESS",
-      )
-      .map((c) => c.value);
-    if (!ids.length) {
-      toast(
-        "Select eligible rows: Retry for failures or missing runs; Run again for successful runs.",
-        true,
-      );
-      return;
-    }
-    action(
-      b,
-      "/api/collections/retry",
-      "POST",
-      {
-        ids,
-        mode,
-      },
-      (o) =>
-        `${o.ids.length} collection(s) queued for retry. Previous attempts are preserved.`,
-    );
-  }
-});
-document.addEventListener("change", (event) => {
-  if (event.target.id === "select-all")
-    document
-      .querySelectorAll('[name="collection"]')
-      .forEach((c) => (c.checked = event.target.checked));
 });
 document.querySelectorAll("[data-update-collector]").forEach((form) =>
   form.addEventListener("submit", (e) => {

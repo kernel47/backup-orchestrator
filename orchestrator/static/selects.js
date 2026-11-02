@@ -90,12 +90,11 @@
             "Workspace: " +
             (options[select.selectedIndex]?.textContent ||
               "Create your first zone");
-        items.forEach((item, index) =>
-          item.setAttribute(
-            "aria-selected",
-            String(index === select.selectedIndex),
-          ),
-        );
+        items.forEach((item, index) => {
+          item.hidden = options[index].hidden;
+          item.setAttribute("aria-disabled", String(options[index].disabled));
+          item.setAttribute("aria-selected", String(index === select.selectedIndex));
+        });
       }
 
       function position() {
@@ -202,9 +201,13 @@
           }
           if (key === "ArrowDown" || key === "ArrowUp")
             move(key === "ArrowDown" ? 1 : -1);
-          else if (key === "Home" || key === "End")
-            highlight(key === "Home" ? 0 : options.length - 1);
-          else choose(active);
+          else if (key === "Home" || key === "End") {
+            const eligible = options
+              .map((option, index) => ({ option, index }))
+              .filter(({ option }) => !option.disabled);
+            const target = key === "Home" ? eligible[0] : eligible.at(-1);
+            if (target) highlight(target.index);
+          } else choose(active);
         } else if (key === "Escape") {
           event.preventDefault();
           close();

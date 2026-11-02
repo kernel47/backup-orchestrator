@@ -1,16 +1,17 @@
 """Collection history, replay requests and worker task protocol."""
 
 import time
-from collections import Counter
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from sqlalchemy import func, select
 
 from . import db
 from . import service as svc
 from .config import settings
 from .filters import filters
+from .history_queries import HistoryStore, window_query
 from .models import Attempt, Collector, HostGroup, Schedule, Window, Worker
+from .records import dt
 from .schemas import (
     PlanRequest,
     ResultRequest,
@@ -24,42 +25,60 @@ from .workspaces import current_zone, require_zone
 router = APIRouter()
 
 
+def refresh_legacy_history(session, selected):
+    # Preserve the legacy API's expectation planning; dashboard reads do not use it.
+    svc.recover(session)
+    if selected.get("date"):
+        svc.expected(
+            session,
+            selected["date"],
+            selected.get("collector_id"),
+            selected.get("host", ""),
+            zone=selected.get("zone", ""),
+        )
+
+
 @router.get("/api/collections")
-def collections(f: dict = Depends(filters)):
-    with db.transaction() as s:
-        svc.recover(s)
-        if f.get("date"):
-            svc.expected(
-                s,
-                f["date"],
-                f.get("collector_id"),
-                f.get("host", ""),
-                zone=f.get("zone", ""),
-            )
-        return svc.rows(s, f)
+def collections(
+    response: Response,
+    f: dict = Depends(filters),
+    limit: int = Query(1000, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    with db.transaction() as session:
+        refresh_legacy_history(session, f)
+        total = session.scalar(window_query(f).with_only_columns(func.count(Window.id)))
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Limit"] = str(limit)
+        response.headers["X-Offset"] = str(offset)
+        response.headers["X-Has-More"] = str(offset + limit < total).lower()
+        return svc.rows(session, f, limit=limit, offset=offset)
 
 
 @router.get("/api/collections/summary")
 def summary(f: dict = Depends(filters)):
     f.pop("status", None)
-    rs = collections(f)
+    with db.transaction() as session:
+        refresh_legacy_history(session, f)
+        counts, _ = HistoryStore(session).summary(f)
+    counts.pop("RECOVERED", None)
     return {
-        "expected": sum(r["status"] not in ("SCHEDULED", "DISABLED") for r in rs),
-        "counts": dict(Counter(r["status"] for r in rs)),
+        "expected": sum(
+            v for k, v in counts.items() if k not in ("SCHEDULED", "DISABLED")
+        ),
+        "counts": dict(counts),
     }
 
 
 @router.get("/api/collections/{collection_id}")
 def collection(collection_id: str):
-    with db.transaction() as s:
+    with db.Session() as s:
         w = s.get(Window, collection_id)
         if not w:
             raise HTTPException(404, "Unknown collection")
         return next(
             r
-            for r in svc.rows(
-                s, {"date": w.period_start[:10], "collector_id": w.collector_id}
-            )
+            for r in svc.rows(s, window_ids=[collection_id])
             if r["id"] == collection_id
         )
 
@@ -109,7 +128,7 @@ def plan(body: PlanRequest):
                         w.status == "PENDING"
                         and not w.snapshot.get("host_group_id")
                         and not s.scalar(
-                            select(Attempt).where(Attempt.window_id == cid)
+                            select(Attempt.id).where(Attempt.window_id == cid).limit(1)
                         )
                     ):
                         memberships = [
@@ -164,7 +183,7 @@ def heartbeat(body: WorkerHeartbeat, authorization: str = Header(default="")):
                     if (
                         window.snapshot.get("schedule_kind") == "daily_local"
                         and window.snapshot.get("clock_worker_id") == wid
-                        and svc.dt(window.period_end) > svc.now()
+                        and dt(window.period_end) > svc.now()
                         and not s.scalar(
                             select(Attempt.id).where(Attempt.window_id == window.id)
                         )

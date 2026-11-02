@@ -37,7 +37,7 @@
     if (role === "viewer") {
       document
         .querySelectorAll(
-          'form:not(.filters):not(.pagination-size):not(.workspace-picker):not([action="/logout"]) button,[data-plan],[data-retry-one],[data-rerun-one],#retry-selected,#rerun-selected,[data-rotate-worker],[data-host-state],[data-group-state],[data-delete-zone],[data-delete-source]',
+          'form:not(.filters):not(.pagination-size):not(.workspace-picker):not([action="/logout"]) button,[data-plan],[data-retry-one],[data-rerun-one],[data-rotate-worker],[data-host-state],[data-group-state],[data-delete-zone],[data-delete-source]',
         )
         .forEach((b) => {
           b.disabled = true;

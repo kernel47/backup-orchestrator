@@ -25,6 +25,7 @@ from .models import (
     Worker,
     Zone,
 )
+from .records import dump
 from .security import admin
 from .workspaces import current_zone, require_zone
 
@@ -87,7 +88,7 @@ class WorkerInput(BaseModel):
 @router.get("/api/zones")
 def zones():
     with db.transaction() as session:
-        return [svc.dump(z) for z in session.scalars(select(Zone).order_by(Zone.id))]
+        return [dump(z) for z in session.scalars(select(Zone).order_by(Zone.id))]
 
 
 @router.post("/api/zones", dependencies=[Depends(admin)])
@@ -100,7 +101,7 @@ def save_zone(body: ZoneInput):
         zone.name = body.name
         zone.enabled = body.enabled
         session.flush()
-        return svc.dump(zone)
+        return dump(zone)
 
 
 @router.delete("/api/zones/{zone_id}", dependencies=[Depends(admin)])
@@ -146,14 +147,14 @@ def host_state(host_id: str, body: HostState):
             if body.enabled and (not zone or not zone.enabled):
                 raise HTTPException(422, "Host zone is disabled")
             if body.enabled or body.restore:
-                inv.validate_routing(session, svc.dump(host))
+                inv.validate_routing(session, dump(host))
             if body.restore:
                 host.deleted = False
             host.enabled = body.enabled
             host.discovered = False
             session.flush()
             svc.validate_groups_and_schedules(session, require_targets=False)
-            return svc.dump(host)
+            return dump(host)
     except ValueError as error:
         raise HTTPException(422, str(error))
 
@@ -174,7 +175,7 @@ def hosts_state(body: HostsState):
                         raise ValueError(
                             "Host " + hid + " belongs to a disabled or missing zone"
                         )
-                    inv.validate_routing(session, svc.dump(host))
+                    inv.validate_routing(session, dump(host))
                 if host.enabled != body.enabled or host.discovered:
                     host.enabled = body.enabled
                     host.discovered = False
@@ -207,7 +208,7 @@ def group_state(group_id: str, body: GroupState):
             group.enabled = body.enabled
             session.flush()
             svc.validate_groups_and_schedules(session, require_targets=False)
-            return svc.dump(group)
+            return dump(group)
     except ValueError as error:
         raise HTTPException(422, str(error))
 
@@ -255,7 +256,7 @@ def provision_worker(body: WorkerInput):
 @router.get("/api/inventory/sources")
 def sources():
     with db.transaction() as session:
-        return [svc.dump(s) for s in session.scalars(select(InventorySource))]
+        return [dump(s) for s in session.scalars(select(InventorySource))]
 
 
 @router.post("/api/inventory/sources", dependencies=[Depends(admin)])
@@ -309,7 +310,7 @@ def save_source(source_id, body):
             setattr(source, key, value)
         session.add(source)
         session.flush()
-        return svc.dump(source)
+        return dump(source)
 
 
 def discovery_failure(error):
@@ -347,7 +348,7 @@ def discover(source_id: str):
         source = session.get(InventorySource, source_id)
         if not source:
             raise HTTPException(404, "Unknown source")
-        spec = svc.dump(source)
+        spec = dump(source)
     try:
         return inv.preview(source_id, inv.read_source(spec))
     except Exception as error:
@@ -451,7 +452,7 @@ def update_worker_policy(worker_id: str, body: WorkerInput):
         worker.zones = body.zones
         worker.scopes = body.scopes
         worker.concurrency = body.concurrency
-        return svc.dump(worker)
+        return dump(worker)
 
 
 class ScopeInput(BaseModel):
