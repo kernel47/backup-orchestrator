@@ -16,7 +16,7 @@
 <input type="checkbox" name="host_ids" value="{{host.id}}" {{'checked' if group and host.id in group.host_ids}}>
 <span>
 <strong>{{host.id}}</strong>
-<small>{{host.scope}} · {{host.zone}} · {{'Enabled' if host.enabled else 'Disabled'}}</small>
+<small>{{host.scope}} · {{host.zone}} · {{'Discovered' if host.discovered else 'Enabled' if host.enabled else 'Disabled'}}</small>
 </span>
 </label>{% endfor %}</div>
 <div class="form-actions">

@@ -609,3 +609,60 @@ def test_selected_host_activation_is_atomic(database):
         )
         assert "Delete / archive" not in page and ">Archived<" not in page
         assert "data-group-hosts-state" not in client.get("/?view=groups").text
+
+
+def test_recreated_source_hosts_remain_visible_in_hosts_and_can_be_activated(
+    database, tmp_path
+):
+    host_id = "ref-emea-host"
+    path = tmp_path / "hosts-emea.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hosts": [{"id": host_id, "zone": "EMEA", "scope": "NetBackup"}],
+            }
+        )
+    )
+    headers = {**AUTH, "X-Orchestrator-Zone": "EMEA"}
+    body = {"name": "EMEA inventory", "config": {"path": str(path)}}
+    with TestClient(app) as client:
+        for index in range(2):
+            source = client.post(
+                "/api/inventory/sources", headers=headers, json=body
+            ).json()
+            preview = client.post(
+                f"/api/inventory/sources/{source['id']}/discover", headers=headers
+            ).json()
+            applied = client.post(
+                f"/api/inventory/syncs/{preview['id']}/apply", headers=headers
+            )
+            assert applied.status_code == 200, applied.text
+            if index == 0:
+                g = group(client, [host_id])
+                assert (
+                    client.delete(
+                        f"/api/inventory/sources/{source['id']}", headers=headers
+                    ).status_code
+                    == 200
+                )
+        page = client.get(f"/?view=hosts&workspace=EMEA&group_id={g['id']}").text
+        assert f'aria-label="Select {host_id}"' in page
+        assert f'data-host-state="{host_id}" data-enable="true"' in page
+        assert 'data-state="discovered"' in page
+        assert "Disabled / discovered" in page
+        reset = client.get("/?view=hosts&workspace=EMEA&nav_reset=1").text
+        assert f'<option value="{g["id"]}" selected' not in reset
+        assert f'aria-label="Select {host_id}"' in reset
+        groups_page = client.get("/?view=groups&workspace=EMEA").text
+        assert "NetBackup · EMEA · Discovered" in groups_page
+        assert (
+            client.put(
+                f"/api/hosts/{host_id}/state", headers=headers, json={"enabled": True}
+            ).status_code
+            == 200
+        )
+        with db.Session() as session:
+            host = session.get(Host, host_id)
+            assert host.enabled and not host.discovered
+            assert host_id in session.get(HostGroup, g["id"]).host_ids

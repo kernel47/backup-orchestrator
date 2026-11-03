@@ -46,7 +46,12 @@ class ReferentialService:
         headers = {"Accept": "application/json"}
         if self.config.token:
             headers["Authorization"] = "Bearer " + self.config.token
-        with httpx.Client(verify=self.config.verify_ssl, timeout=30) as client:
+        with httpx.Client(
+            verify=self.config.verify_ssl,
+            timeout=30,
+            follow_redirects=True,
+            max_redirects=10,
+        ) as client:
             response = client.get(
                 self.config.url,
                 params={"region": region} if region else {},

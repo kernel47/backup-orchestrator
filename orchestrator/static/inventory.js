@@ -112,7 +112,8 @@ if (hostTable) {
     hostTable.querySelectorAll("[data-host-row]").forEach((row) => {
       row.hidden = !(
         row.textContent.toLowerCase().includes(search) &&
-        (!state || row.dataset.state === state) &&
+        (!state || row.dataset.state === state ||
+          (state === "disabled" && row.dataset.state === "discovered")) &&
         (!scope || row.dataset.scope === scope) &&
         (!zone || row.dataset.zone === zone) &&
         (!group || JSON.parse(row.dataset.groups).includes(group))
@@ -120,7 +121,8 @@ if (hostTable) {
       if (!row.hidden) count++;
       else row.querySelector('[name="selected-host"]').checked = false;
     });
-    document.querySelector("#host-count").textContent = `${count} hosts`;
+    document.querySelector("#host-count").textContent =
+      `${count} / ${hostTable.querySelectorAll("[data-host-row]").length} hosts`;
     document.querySelector("#host-empty").hidden = count > 0;
     updateSelection();
   };

@@ -266,3 +266,42 @@ def test_multi_zone_apply_preserves_host_activation_and_groups(
             assert {
                 g.id: g.host_ids for g in session.scalars(select(HostGroup))
             } == groups
+
+
+@pytest.mark.parametrize(
+    "location", ["master_servers/?region=EMEA", "/assets/master_servers/?region=EMEA"]
+)
+def test_referential_follows_trailing_slash_redirect_with_region_and_auth(
+    monkeypatch, location
+):
+    def response(request):
+        assert request.url.params["region"] == "EMEA"
+        assert request.headers["Authorization"] == "Bearer test-token"
+        if request.url.path == "/assets/master_servers":
+            return httpx.Response(301, headers={"Location": location})
+        assert request.url.path == "/assets/master_servers/"
+        return httpx.Response(
+            200,
+            json=[{"hostname": "nbu-01", "region": "EMEA", "type": "Master server"}],
+        )
+
+    requests = use_api(monkeypatch, response)
+    monkeypatch.setenv(
+        "REFERENTIAL_URL", "https://referential.example/assets/master_servers"
+    )
+    hosts = ReferentialService().collect_hosts("EMEA")
+    assert len(requests) == 2
+    assert hosts[0]["id"] == "nbu-01"
+
+
+def test_referential_redirect_loop_preserves_existing_export(monkeypatch, tmp_path):
+    requests = use_api(
+        monkeypatch,
+        lambda _: httpx.Response(301, headers={"Location": "/hosts?region=EMEA"}),
+    )
+    path = tmp_path / "hosts-emea.json"
+    path.write_text("previous export")
+    with pytest.raises(httpx.TooManyRedirects):
+        sync_inventory.refresh(path, region="EMEA")
+    assert path.read_text() == "previous export"
+    assert len(requests) == 11

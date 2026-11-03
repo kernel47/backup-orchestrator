@@ -9,7 +9,7 @@
 </div>
 </div>
 {% if view=='hosts' %}
-<form class="filters inventory-filter" onsubmit="return false">
+<form class="filters inventory-filter" autocomplete="off" onsubmit="return false">
 <label>Search hosts<input type="search" id="host-search" placeholder="Host ID, scope or zone">
 </label>
 <label>Scope<select id="host-scope">
@@ -20,13 +20,14 @@
 <option value="">All states</option>
 <option value="discovered">Discovered</option>
 <option value="active">Active</option>
-<option value="disabled">Disabled</option>
+<option value="disabled">Disabled / discovered</option>
 <option value="deleted">Deleted</option>
 </select>
 </label>
 <label>Host group<select id="host-group">
 <option value="">All host groups</option>{% for group in groups %}<option value="{{group.id}}" {{'selected' if request.query_params.get('group_id')==group.id}}>{{group.name}}</option>{% endfor %}</select>
 </label>
+<a class="button" href="/?view=hosts&workspace={{active_zone|urlencode}}&nav_reset=1">Reset filters</a>
 </form>
 <section class="panel">
 <div class="panel-heading">
@@ -71,7 +72,7 @@
 </td>
 </tr>{% endfor %}</tbody>
 </table>
-<p id="host-empty" class="empty-state" hidden>No hosts match these filters.</p>
+<p id="host-empty" class="empty-state" hidden>No hosts match these filters. Use Reset filters to show all hosts in this workspace.</p>
 </div>
 </section>
 <p class="hint">Activate a discovered host to include it in collections. Deleting removes it from active targets and keeps its execution history.</p>
