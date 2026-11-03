@@ -15,7 +15,7 @@ def test_overview_is_unfiltered_and_read_only(database):
             "/?view=overview&scope=unknown&collector_id=netbackup_jobs&date=2026-10-15&period=month"
         ).text
         assert "overview-infrastructure" not in page
-        assert "SATELLITES" in page and "TOTAL JOBS" in page and "SUCCESS RATE" in page
+        assert "SATELLITES" in page and "SCOPES" in page and "SUCCESS RATE" in page
         assert "datadomain_capacity" in page and 'class="filters"' not in page
         assert "Collection history" not in page and "Activity by collector" in page
         assert "overview-satellites" not in page
@@ -123,7 +123,7 @@ def test_overview_activity_matches_days_collectors_and_workspace(database, monke
     from datetime import datetime, timezone
 
     from orchestrator import service as svc
-    from orchestrator.models import Collector, Worker
+    from orchestrator.models import Attempt, Collector, Worker
     from orchestrator.views import overview_activity
     from orchestrator.workspaces import current_zone
 
@@ -176,6 +176,25 @@ def test_overview_activity_matches_days_collectors_and_workspace(database, monke
                         snapshot={"interval_seconds": 3600},
                     )
                 )
+                if status in ("SUCCESS", "FAILED"):
+                    finished = svc.now().timestamp() - (
+                        14 * 86400 if day == "2026-10-01" else 1000
+                    )
+                    session.add(
+                        Attempt(
+                            id=f"activity-attempt-{number}",
+                            window_id=f"activity-{number}",
+                            worker_id="EMEA-SAT-1",
+                            number=1,
+                            status=status,
+                            started_at=finished - 10,
+                            finished_at=finished,
+                            lease_until=finished,
+                            result=None,
+                            logs="",
+                            context={},
+                        )
+                    )
         token = current_zone.set("EMEA")
         try:
             with db.Session() as session:
@@ -197,13 +216,13 @@ def test_overview_activity_matches_days_collectors_and_workspace(database, monke
             current_zone.reset(token)
         page = client.get("/?view=overview&workspace=EMEA").text
         assert "Activity by collector" in page and "Activity by day" in page
-        assert '80.0<span class="overview-stat-unit">%</span>' in page
-        assert "4 successful · 5 completed" in page
+        assert '75.0<span class="overview-stat-unit">%</span>' in page
+        assert "3 successful · 4 completed" in page
         satellite_card = page.split('stat-satellites"', 1)[1].split("</a>", 1)[0]
         assert "<strong>2</strong>" in satellite_card
         assert "1 online" in satellite_card and "1 offline" in satellite_card
-        jobs_card = page.split('stat-jobs"', 1)[1].split("</a>", 1)[0]
-        assert "<strong>7</strong>" in jobs_card
+        scopes_card = page.split('stat-scopes"', 1)[1].split("</a>", 1)[0]
+        assert "hosts ·" in scopes_card and "host groups" in scopes_card
         assert "Latest executions" not in page and "overview-infrastructure" not in page
         activity_section = page.split('aria-labelledby="collector-activity-title"', 1)[
             1

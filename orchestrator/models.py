@@ -168,3 +168,5 @@ LATEST_WINDOW_INDEX = Index(
 RECENT_ATTEMPT_INDEX = Index(
     "ix_attempts_recent", Attempt.started_at.desc(), Attempt.id.desc()
 )
+
+FINISHED_ATTEMPT_INDEX = Index("ix_attempts_finished", Attempt.finished_at)

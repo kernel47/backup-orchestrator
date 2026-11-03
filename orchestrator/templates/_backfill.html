@@ -1,0 +1,13 @@
+{% if user_role in ['admin','operator'] and active_zone %}
+<details class="panel backfill-panel">
+  <summary>Run a past collection</summary>
+  <p class="hint">Choose one host and a past day, even before installation. The current schedule determines the periods to collect. Existing results and active tasks are preserved; failures can be retried individually.</p>
+  <form data-backfill class="basic-filters">
+    <label>Collector<select name="collector_id" required><option value="">Choose collector</option>{% for c in collectors if c.enabled %}<option value="{{c.id}}" {{'selected' if filters.get('collector_id')==c.id}}>{{c.scope}} / {{c.name}}</option>{% endfor %}</select></label>
+    <label>Host<select name="host" required><option value="">Choose host</option>{% for h in hosts if h.enabled %}<option value="{{h.id}}" {{'selected' if filters.get('host')==h.id}}>{{h.id}} · {{h.scope}}</option>{% endfor %}</select></label>
+    <label>Past date (UTC)<input type="date" name="date" max="{{yesterday}}" value="{{filters.date if filters.date < today else ''}}" required></label>
+    <button class="button primary" type="submit">Queue missing periods</button>
+  </form>
+  <p class="hint">One host and one day per launch, up to 500 periods. Hourly schedules create up to 24 tasks. Daily schedules keep the satellite’s local time; the selected date identifies the period start in UTC.</p>
+</details>
+{% endif %}

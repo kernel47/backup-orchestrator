@@ -1,8 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-{% set completed=counts.SUCCESS+counts.FAILED+counts.TIMEOUT+counts.UNKNOWN %}
 <div class="page-heading"><div><div class="eyebrow">WORKSPACE PULSE · {{active_zone}}</div><h1>Overview</h1><p>Collectors, inventory and collection activity across your workspace.</p></div><a class="button" href="/?view=runs">Open run history ↗</a></div>
-{% set total_jobs=counts.values()|sum-counts.SCHEDULED-counts.DISABLED %}
 <div class="metrics overview-metrics">
   <a class="metric overview-stat stat-satellites" href="/?view=workers">
     <span>SATELLITES</span>
@@ -20,26 +18,55 @@
     </div>
     <small>{{collectors|selectattr('enabled')|list|length}} enabled · {{collectors|rejectattr('enabled')|list|length}} paused<br>Configured collection scripts</small>
   </a>
-  <a class="metric overview-stat stat-jobs" href="/?view=runs&date={{today}}">
-    <span>TOTAL JOBS</span>
+  <a class="metric overview-stat stat-scopes" href="/?view=scopes">
+    <span>SCOPES</span>
     <div class="overview-stat-main">
       <span class="overview-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M9 5V3h6v2M8 10h8M8 14h8M8 18h4"/></svg></span>
-      <strong>{{total_jobs}}</strong>
+      <strong>{{scope_count}}</strong>
     </div>
-    <small>Collection tasks · all time<br>{{counts.RUNNING}} running · {{counts.PENDING}} pending</small>
+    <small>{{inventory.hosts}} hosts · {{inventory.groups}} host groups<br>Available collection scopes</small>
   </a>
-  <a class="metric overview-stat stat-success" href="/?view=runs&date={{today}}&status=SUCCESS">
+  <div class="metric overview-stat stat-success">
     <span>SUCCESS RATE</span>
     <div class="overview-stat-main">
       <span class="overview-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span>
-      <strong class="{{'green' if completed}}">{{(counts.SUCCESS/completed*100)|round(1) if completed else '—'}}{% if completed %}<span class="overview-stat-unit">%</span>{% endif %}</strong>
+      <strong class="{{'green' if operations.completed and operations.success_rate==100}}">{{operations.success_rate if operations.completed else '—'}}{% if operations.completed %}<span class="overview-stat-unit">%</span>{% endif %}</strong>
     </div>
-    <small>{{counts.SUCCESS}} successful · {{completed}} completed<br>{{'All time · completed tasks' if completed else 'No completed tasks yet'}}</small>
-  </a>
+    <small>{{operations.successful}} successful · {{operations.completed}} completed<br>Last 24h · regular collections</small>
+  </div>
 </div>
+{% if attention or satellites.offline %}
+<section class="panel overview-attention" aria-labelledby="attention-title">
+  <div class="panel-heading"><div><h2 id="attention-title">Needs attention</h2><p>Latest regular collection results and current infrastructure issues.</p></div><span class="quiet-chip">{{attention|length}} collector(s) · {{satellites.offline}} satellite(s)</span></div>
+  <div class="attention-list">
+    {% if satellites.offline %}<a href="/?view=workers"><span class="attention-dot"></span><strong>{{satellites.offline}} satellite(s) offline</strong><span>Check connectivity and worker services</span></a>{% endif %}
+    {% for c in attention[:6] %}{% set h=health[c.id] %}{% set separator=joiner(' · ') %}<a href="{{'/?view=schedules' if h.stale and not (h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN+h.counts.MISSING) else '/?view=runs&collector_id='+c.id+'&date='+(h.last_period or today)+'&period=week&status=ATTENTION'}}"><span class="attention-dot"></span><strong>{{c.scope}} / {{c.name}}</strong><span>{% if h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN %}{{separator()}}{{h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN}} failed / timeout / unknown{% endif %}{% if h.counts.MISSING %}{{separator()}}{{h.counts.MISSING}} missing{% endif %}{% if h.stale %}{{separator()}}{{h.stale}} overdue{% endif %}</span></a>{% endfor %}
+    {% if attention|length>6 %}<span class="hint">{{attention|length-6}} more collectors need attention. See Collector health below.</span>{% endif %}
+  </div>
+</section>
+{% endif %}
+<section class="panel current-activity" aria-labelledby="current-activity-title">
+  <div><h2 id="current-activity-title">Current activity</h2><p>Tasks across all collection dates</p></div>
+  <div class="current-activity-stat"><strong class="{{'activity-indicator' if operations.running}}">{{operations.running}}</strong><span>Running</span></div>
+  <div class="current-activity-stat"><strong>{{operations.pending}}</strong><span>Pending</span></div>
+  <div class="current-activity-stat"><strong>{{operations.oldest_wait}}</strong><span>Oldest waiting task</span></div>
+  <div class="current-activity-stat backfill-activity"><strong>{{operations.backfills_running}} / {{operations.backfills_pending}}</strong><span>Historical · running / pending</span></div>
+</section>
+<section class="panel overview-health-panel" aria-labelledby="overview-collectors">
+  <div class="panel-heading"><div><h2 id="overview-collectors">Collector health</h2><p>Latest regular period per targeted host. Collectors needing attention appear first.</p></div><a class="subtle-link" href="/?view=collectors">Browse collectors</a></div>
+  <div class="overview-health-scroll"><table class="overview-health-table"><thead><tr><th scope="col">Scope / collector</th><th scope="col">Status</th><th scope="col">Hosts successful</th><th scope="col">Failed / unknown</th><th scope="col">Running / pending</th><th scope="col">Last success</th></tr></thead><tbody>
+  {% for c in collectors %}{% set h=health[c.id] %}{% set failures=h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN %}
+    <tr><td><a class="strong" href="/?view=runs&collector_id={{c.id}}&date={{h.last_period or today}}&period=week">{{c.name}}</a><small>{{c.scope}}</small></td>
+    <td><span class="badge {{'SCHEDULED' if c.enabled and h.status=='DISABLED' and h.scheduled else h.status if c.enabled else 'DISABLED'}}">{{'Awaiting runs' if c.enabled and h.status=='DISABLED' and h.scheduled else 'No schedule' if c.enabled and h.status=='DISABLED' else h.status if c.enabled else 'Paused'}}</span>{% if h.stale %}<small class="red">{{h.stale}} overdue</small>{% endif %}{% if h.counts.MISSING %}<small class="red">{{h.counts.MISSING}} missing</small>{% endif %}</td>
+    <td>{{h.counts.SUCCESS}} / {{h.expected}}{% if h.counts.UNRECORDED %}<small>{{h.counts.UNRECORDED}} awaiting first run</small>{% endif %}</td>
+    <td class="{{'red' if failures}}">{{failures or '—'}}</td><td>{{h.counts.RUNNING}} / {{h.counts.PENDING}}</td>
+    <td class="mono">{{h.last_success|replace('T',' ')|replace('Z',' UTC') if h.last_success else 'Not recorded yet'}}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty-state">No collectors yet. <a href="/?view=settings&section=collectors&new=1">Create your first collector</a></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
 <div class="overview-pulse-grid">
 <section class="panel collector-activity" aria-labelledby="collector-activity-title">
-<div class="panel-heading"><div><h2 id="collector-activity-title">Activity by collector</h2><p>Last 7 days · collection periods</p></div><span class="quiet-chip">{{collector_activity|sum(attribute='total')}} collections</span></div>
+<div class="panel-heading"><div><h2 id="collector-activity-title">Activity by collector</h2><p>Last 7 days · regular collection periods</p></div><span class="quiet-chip">{{collector_activity|sum(attribute='total')}} collections</span></div>
 <div class="collector-activity-list" tabindex="0" role="region" aria-label="Collector activity for the last 7 days">
   <table class="collector-activity-table">
     <thead><tr><th scope="col">Collector</th><th scope="col">Collections</th><th scope="col">Success</th><th scope="col">Failed</th></tr></thead>
@@ -60,14 +87,11 @@
 </div>
 </section>
 <section class="panel activity-trend" aria-labelledby="activity-title">
-<div class="panel-heading"><div><h2 id="activity-title">Activity by day</h2><p>Last 7 days · collection periods</p></div><span class="quiet-chip">{{trend|sum(attribute='total')}} collections</span></div>
+<div class="panel-heading"><div><h2 id="activity-title">Activity by day</h2><p>Last 7 days · regular collection periods</p></div><span class="quiet-chip">{{trend|sum(attribute='total')}} collections</span></div>
 <div class="trend-chart">{% for d in trend %}{% set failures=d.counts.FAILED+d.counts.TIMEOUT %}{% set missing=d.counts.MISSING+d.counts.UNKNOWN %}{% set active=d.counts.RUNNING+d.counts.PENDING %}
 <a class="trend-day {{'is-today' if d.day==today}}" href="/?view=runs&date={{d.day}}" aria-label="{{d.day}}: {{d.counts.SUCCESS}} successful, {{failures}} failed, {{missing}} missing or unknown, {{active}} active">
 <span class="trend-total">{{d.total or '—'}}</span><span class="trend-track"><span class="trend-stack" style="height:{{d.total/trend_max*100}}%">{% for number,kind in [(d.counts.SUCCESS,'success'),(active,'active'),(missing,'missing'),(failures,'failure')] %}{% if number %}<span class="trend-segment {{kind}}" style="flex:{{number}}"></span>{% endif %}{% endfor %}</span></span><span class="trend-date">{{d.day[8:]}}/{{d.day[5:7]}}</span></a>
 {% endfor %}</div><div class="trend-legend"><span><i class="success"></i>Success</span><span><i class="active"></i>Active</span><span><i class="missing"></i>Missing / unknown</span>{% if trend|selectattr('counts.FAILED')|list or trend|selectattr('counts.TIMEOUT')|list %}<span><i class="failure"></i>Failed</span>{% endif %}</div>
 </section>
 </div>
-<section aria-labelledby="overview-collectors"><div class="section-heading"><div><h2 id="overview-collectors">Collector health</h2><p>Latest collection period per host. Open a collector to investigate.</p></div><a class="subtle-link" href="/">Browse collectors ↗</a></div><div class="overview-collector-list">
-{% for c in collectors %}{% set h=health[c.id] %}<a class="panel overview-collector collector-health" href="/?view=runs&collector_id={{c.id}}&date={{h.last_period or today}}"><div class="health-heading"><div><span class="card-scope">{{c.scope}}</span><h3>{{c.name}}</h3></div><span class="badge {{h.status if c.enabled else 'DISABLED'}}">{{h.status if c.enabled else 'Paused'}}</span></div><div class="collector-health-track" aria-label="{{h.counts.SUCCESS}} of {{h.expected}} hosts successful"><span style="width:{{h.counts.SUCCESS/h.expected*100 if h.expected else 0}}%"></span></div><div class="health-counts"><span class="green">{{h.counts.SUCCESS}} / {{h.expected}} hosts successful</span>{% if h.stale %}<span class="red">{{h.stale}} overdue</span>{% endif %}{% if h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN %}<span class="red">{{h.counts.FAILED+h.counts.TIMEOUT+h.counts.UNKNOWN}} failed / unknown</span>{% endif %}{% if h.counts.MISSING %}<span class="red">{{h.counts.MISSING}} missing</span>{% endif %}{% if h.counts.RUNNING+h.counts.PENDING %}<span class="activity-indicator">{{h.counts.RUNNING+h.counts.PENDING}} active</span>{% endif %}{% if h.counts.UNRECORDED %}<span>{{h.counts.UNRECORDED}} awaiting first run</span>{% endif %}</div><small>{{'Schedules active' if h.scheduled else 'Schedules paused'}} · Last success: {{h.last_success|replace('T',' ')|replace('Z',' UTC') if h.last_success else 'Not recorded yet'}}</small></a>{% else %}<div class="panel empty-state">No collectors yet. <a href="/?view=settings&section=collectors&new=1">Create your first collector ↗</a></div>{% endfor %}
-</div></section>
 {% endblock %}

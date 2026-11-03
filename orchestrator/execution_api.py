@@ -10,9 +10,10 @@ from . import service as svc
 from .config import settings
 from .filters import filters
 from .history_queries import HistoryStore, window_query
-from .models import Attempt, Collector, HostGroup, Schedule, Window, Worker
-from .records import dt
+from .models import Attempt, Collector, Host, HostGroup, Schedule, Window, Worker
+from .records import dt, iso
 from .schemas import (
+    BackfillRequest,
     PlanRequest,
     ResultRequest,
     RetryRequest,
@@ -81,6 +82,67 @@ def collection(collection_id: str):
             for r in svc.rows(s, window_ids=[collection_id])
             if r["id"] == collection_id
         )
+
+
+@router.post("/api/collections/backfill", dependencies=[Depends(admin)])
+def backfill(body: BackfillRequest):
+    """Explicit, bounded backfill of one host/day using the current schedule."""
+    if body.date >= svc.now().date():
+        raise HTTPException(422, "Choose a past date (UTC).")
+    try:
+        with db.transaction() as s:
+            c = s.get(Collector, body.collector_id)
+            h = s.get(Host, body.host)
+            if not c or not h:
+                raise HTTPException(
+                    404, "Collector or host not found in this workspace"
+                )
+            if not c.enabled or not svc.host_active(s, h):
+                raise ValueError("Collector and host must be enabled.")
+            rule = svc.host_rule(s, c, h)
+            if h.scope != c.scope or rule is False:
+                raise ValueError(
+                    "Host must be targeted by an enabled schedule for this collector."
+                )
+            start, end = svc.bounds(body.date.isoformat())
+            if rule and rule.kind == "daily_local":
+                if not svc.clock_worker(s, h):
+                    raise ValueError(
+                        "A satellite with a timezone is required for this daily schedule."
+                    )
+            else:
+                interval = rule.interval_seconds if rule else c.interval_seconds
+                if 86400 / interval > 500:
+                    raise ValueError(
+                        "This day exceeds the limit of 500 periods per request."
+                    )
+            pending = select(Window.id).where(
+                Window.period_start >= iso(start),
+                Window.period_start < iso(end),
+                Window.collector_id == c.id,
+                Window.host_id == h.id,
+                Window.status == "PENDING",
+            )
+            before = set(s.scalars(pending))
+            ids = svc.expected(
+                s,
+                body.date.isoformat(),
+                c.id,
+                h.id,
+                enqueue=True,
+                zone=h.zone,
+                queue_statuses=("MISSING",),
+            )
+            if len(ids) > 500:
+                raise ValueError(
+                    "This day exceeds the limit of 500 periods per request."
+                )
+            queued = sorted(set(s.scalars(pending)) - before)
+            for window in s.scalars(select(Window).where(Window.id.in_(queued))):
+                window.snapshot = dict(window.snapshot, historical_backfill=True)
+            return {"ids": queued, "queued": len(queued), "date": body.date.isoformat()}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post("/api/collections/plan", dependencies=[Depends(admin)])

@@ -158,7 +158,7 @@ def test_latest_host_health_and_attention_filter(database):
         assert len(filtered) == 1 and filtered[0]["status"] == "TIMEOUT"
     with TestClient(app) as client:
         page = client.get("/?view=overview").text
-        assert "Last success:" in page and "hosts successful" in page
+        assert "Last success</th>" in page and "Hosts successful</th>" in page
         schedules = client.get("/?view=schedules&new=1").text
         assert 'value="3600" selected' in schedules
         assert 'value="600" ' not in schedules

@@ -259,7 +259,7 @@ nav.detail-mode-tabs a.active{background:#e8f3ee;box-shadow:none;border-radius:5
 .overview-stat::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: var(--stat-color); opacity: .65; }
 .stat-satellites { --stat-color: #348b73; --stat-bg: #eaf5ef; }
 .stat-collectors { --stat-color: #5d79b1; --stat-bg: #edf2fa; }
-.stat-jobs { --stat-color: #5c8a9c; --stat-bg: #edf5f7; }
+.stat-scopes { --stat-color: #5c8a9c; --stat-bg: #edf5f7; }
 .stat-success { --stat-color: #348b73; --stat-bg: #eaf5ef; }
 .overview-stat-main { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 18px 0 15px; }
 .overview-stat-icon { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; color: var(--stat-color); background: var(--stat-bg); flex: none; }
@@ -326,3 +326,32 @@ nav.detail-mode-tabs a.active{background:#e8f3ee;box-shadow:none;border-radius:5
 .select-menu .select-option[hidden] { display: none; }
 .history-filters .select-trigger { gap: 6px; padding-left: 9px; padding-right: 9px; }
 .history-filters .select-chevron { width: 14px; height: 14px; }
+
+/* Explicit historical launches stay separate from read-only history filters. */
+.backfill-panel { margin-bottom: 20px; padding: 16px 20px; }
+.backfill-panel > summary { cursor: pointer; font-weight: 600; color: var(--accent-text); }
+.backfill-panel .basic-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.backfill-panel label { flex: 1 1 190px; min-width: 0; }
+.backfill-panel .hint { margin: 12px 0 0; }
+.backfill-panel form { margin-top: 16px; }
+
+/* Workspace pulse: problems, current work, collector health, then trends. */
+.overview-attention { margin-bottom: 18px; border-left: 3px solid #c96a43; }
+.attention-list { padding: 0 20px 16px; max-height: 260px; overflow: auto; }
+.attention-list > a { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.attention-list > a:hover strong { color: var(--accent-text); }
+.attention-list > a > span:last-child { color: var(--muted); }
+.attention-dot { width: 7px; height: 7px; border-radius: 50%; background: #c96a43; flex: none; }
+.current-activity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; margin-bottom: 18px; }
+.current-activity h2 { margin: 0 0 5px; font-size: 15px; }
+.current-activity p { margin: 0; color: var(--muted); font-size: 12px; }
+.current-activity-stat { display: flex; flex-direction: column; gap: 5px; }
+.current-activity-stat strong { font-size: 21px; font-variant-numeric: tabular-nums; }
+.current-activity-stat span { color: var(--muted); font-size: 12px; }
+.backfill-activity { border-left: 1px solid var(--line); padding-left: 20px; }
+.overview-health-panel { margin-bottom: 20px; }
+.overview-health-scroll { overflow: auto; max-height: 430px; }
+.overview-health-table { min-width: 760px; }
+.overview-health-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.overview-health-table td { font-variant-numeric: tabular-nums; }
+@media(max-width: 720px) { .current-activity > div:first-child { flex-basis: 100%; } .backfill-activity { padding-left: 0; border-left: 0; } }

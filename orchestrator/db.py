@@ -7,7 +7,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from .config import settings
-from .models import LATEST_WINDOW_INDEX, RECENT_ATTEMPT_INDEX, Base
+from .models import (
+    FINISHED_ATTEMPT_INDEX,
+    LATEST_WINDOW_INDEX,
+    RECENT_ATTEMPT_INDEX,
+    Base,
+)
 
 WRITE_LOCK = 732614902  # One transaction-scoped writer lock per PostgreSQL database.
 
@@ -146,6 +151,7 @@ def init():
             )
     LATEST_WINDOW_INDEX.create(engine, checkfirst=True)
     RECENT_ATTEMPT_INDEX.create(engine, checkfirst=True)
+    FINISHED_ATTEMPT_INDEX.create(engine, checkfirst=True)
     with engine.begin() as conn:
         for table in (
             "hosts",

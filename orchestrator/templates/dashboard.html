@@ -16,6 +16,7 @@
 </div></div>
 {% if scope_tabs %}{% include '_scope_tabs.html' %}{% endif %}
 {% if view=='collectors' %}{% include '_collector_filters.html' %}{% else %}{% include '_monitor_filters.html' %}{% endif %}
+{% include '_backfill.html' %}
 {% if view=='runs' %}{% include '_period_overview.html' %}{% endif %}
 {% if view=='collectors' %}<div class="metrics" aria-label="Collection summary">
 <div class="metric">

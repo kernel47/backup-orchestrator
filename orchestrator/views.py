@@ -4,6 +4,50 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 
+def regular_collection():
+    """Missing flags on older records mean regular collection, across both databases."""
+    from .models import Window
+
+    return Window.snapshot["historical_backfill"].as_boolean().is_not(True)
+
+
+def host_overdue(session, collector, host, window, rule):
+    """Only periods due after schedule creation can be overdue."""
+    from . import service as svc
+    from .scheduling import latest_daily_period
+
+    if window and window.status in ("RUNNING", "PENDING"):
+        return False
+    if rule:
+        if rule.kind == "daily_local":
+            worker = svc.clock_worker(session, host)
+            if not worker:
+                return False
+            _, due = latest_daily_period(svc.now(), rule.local_time, worker.timezone)
+        else:
+            due = datetime.fromtimestamp(
+                int(svc.now().timestamp())
+                // rule.interval_seconds
+                * rule.interval_seconds,
+                timezone.utc,
+            )
+        return (
+            due.timestamp() >= rule.created_at
+            and due + timedelta(seconds=collector.timeout_seconds + 300) < svc.now()
+            and (not window or svc.dt(window.period_end) < due)
+        )
+    return bool(
+        window
+        and collector.legacy_schedule
+        and svc.now()
+        > svc.dt(window.period_end)
+        + timedelta(
+            seconds=window.snapshot.get("interval_seconds", collector.interval_seconds)
+            + 300
+        )
+    )
+
+
 def latest_collector_health(session):
     """One latest recorded period per host, across each satellite's local clock."""
     from sqlalchemy import or_, select
@@ -18,6 +62,7 @@ def latest_collector_health(session):
             Window.zone == Host.zone,
             Window.collector_id == Collector.id,
             Window.status.notin_(["SCHEDULED", "DISABLED"]),
+            regular_collection(),
         )
         .order_by(
             Window.period_start.desc(), Window.created_at.desc(), Window.id.desc()
@@ -45,15 +90,20 @@ def latest_collector_health(session):
                 )
             )
         )
-        targets = {h.id for rule in rules for h in svc.rule_targets(session, rule)}
+        target_hosts, target_rules = {}, {}
+        for rule in rules:
+            for host in svc.rule_targets(session, rule):
+                target_hosts[host.id] = host
+                target_rules[host.id] = rule
         if collector.legacy_schedule and collector.enabled:
-            targets.update(
-                h.id
+            target_hosts.update(
+                (h.id, h)
                 for h in session.scalars(
                     select(Host).where(Host.scope == collector.scope)
                 )
                 if svc.host_active(session, h)
             )
+        targets = set(target_hosts)
         # With no active schedule, show manual/paused execution history explicitly.
         ids = (
             targets
@@ -77,23 +127,15 @@ def latest_collector_health(session):
         )
         stale = (
             sum(
-                1
-                for hid in targets
-                if hid in recorded
-                and recorded[hid].status not in ("RUNNING", "PENDING")
-                and svc.now()
-                > svc.dt(recorded[hid].period_end)
-                + timedelta(
-                    seconds=recorded[hid].snapshot.get(
-                        "interval_seconds", collector.interval_seconds
-                    )
-                    + 300
+                host_overdue(
+                    session, collector, host, recorded.get(hid), target_rules.get(hid)
                 )
+                for hid, host in target_hosts.items()
             )
-            if rules or collector.legacy_schedule and collector.enabled
+            if collector.enabled
             else 0
         )
-        if stale and status == "SUCCESS":
+        if stale and status in ("SUCCESS", "DISABLED"):
             status = "MISSING"
         last = collector.last_success_at
         result[collector.id] = {
@@ -130,6 +172,7 @@ def overview_activity(session):
             Window.period_start >= days[0] + "T00:00:00Z",
             Window.period_start < svc.iso(today + timedelta(days=1)),
             Window.status.notin_(["SCHEDULED", "DISABLED"]),
+            regular_collection(),
         )
         .group_by(day_column, Window.collector_id, Window.status)
     ):
@@ -160,4 +203,88 @@ def overview_activity(session):
         "trend_max": max((d["total"] for d in trend), default=0) or 1,
         "collector_activity": activity,
         "collector_activity_max": max((c["total"] for c in activity), default=0) or 1,
+    }
+
+
+def overview_operations(session):
+    """Small SQL aggregates for live capacity and completed executions in 24 hours."""
+    from sqlalchemy import func, select
+
+    from . import service as svc
+    from .models import Attempt, Window
+
+    current = svc.now().timestamp()
+    recent = (
+        select(Window.id, Window.status)
+        .join(Attempt, Attempt.window_id == Window.id)
+        .where(
+            Attempt.finished_at >= current - 86400,
+            Attempt.finished_at <= current,
+            Window.status.in_(["SUCCESS", "FAILED", "TIMEOUT", "UNKNOWN"]),
+            regular_collection(),
+        )
+        .distinct()
+        .subquery()
+    )
+    completed = Counter(
+        dict(
+            session.execute(
+                select(recent.c.status, func.count()).group_by(recent.c.status)
+            ).all()
+        )
+    )
+    active = Counter(
+        dict(
+            session.execute(
+                select(Window.status, func.count())
+                .where(Window.status.in_(["RUNNING", "PENDING"]))
+                .group_by(Window.status)
+            ).all()
+        )
+    )
+    backfills = Counter(
+        dict(
+            session.execute(
+                select(Window.status, func.count())
+                .where(
+                    Window.status.in_(["RUNNING", "PENDING"]),
+                    Window.snapshot["historical_backfill"].as_boolean().is_(True),
+                )
+                .group_by(Window.status)
+            ).all()
+        )
+    )
+    oldest = session.scalar(
+        select(
+            func.min(
+                func.coalesce(
+                    Window.snapshot["queued_at"].as_float(),
+                    Window.created_at,
+                )
+            )
+        ).where(Window.status == "PENDING")
+    )
+    waiting = max(0, int(current - oldest)) if oldest is not None else None
+    age = (
+        "—"
+        if waiting is None
+        else f"{waiting // 86400}d {waiting % 86400 // 3600}h"
+        if waiting >= 86400
+        else f"{waiting // 3600}h {waiting % 3600 // 60}m"
+        if waiting >= 3600
+        else f"{waiting // 60}m"
+        if waiting >= 60
+        else "< 1m"
+    )
+    return {
+        "completed": completed.total(),
+        "successful": completed["SUCCESS"],
+        "success_rate": round(completed["SUCCESS"] / completed.total() * 100, 1)
+        if completed
+        else None,
+        "running": active["RUNNING"],
+        "pending": active["PENDING"],
+        "backfills_running": backfills["RUNNING"],
+        "backfills_pending": backfills["PENDING"],
+        "oldest_wait": age,
     }

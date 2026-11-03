@@ -64,7 +64,9 @@ DATABASE_URL=sqlite:///var/orchestrator.db
 7. **Schedules:** use Add schedule, choose the collector, groups, parameters and frequency in the selected zone. Daily `07:00` uses each target worker's local timezone.
 8. **Collectors / Runs & history:** inspect daily health in Collectors, then open History for host/hour/status details. Retry failures or rerun successful periods without losing attempts.
 
-Overview summarizes collectors, workers and inventory in the current zone workspace. Scope tabs are generated from configured objects.
+Overview shows four cards: Satellites (online/offline), Collectors (enabled/paused), Scopes (with host/group counts), and the success rate for regular collections completed in the last 24 hours. Each collection period counts once, even after retries; the final state determines its outcome. Empty periods display no percentage. Needs attention appears only for offline satellites or collectors with failed, unknown, missing or overdue regular periods. New schedules do not imply missed collections before their creation.
+
+Current activity shows all running/pending tasks, the oldest pending task's waiting age, and a separate running/pending count for historical backfills. Existing tasks without a queue timestamp use their creation time for that age. Collector health lists the latest regular period per target host, prioritizing collectors needing attention. Last success is the most recent successful execution, including manual runs. The two activity panels summarize regular collection periods by collector/day over the last seven days. Explicit backfills launched through Run a past collection are tagged and excluded from regular health and success/activity statistics; their retries keep the tag, and their full results remain in History. Older untagged history is treated as regular collection history. Scope tabs are generated from configured objects.
 
 ## Capacity and host protection
 
@@ -242,3 +244,9 @@ Python uses four-space indentation and separate statements/imports. JavaScript u
 ### API history pagination
 
 `GET /api/collections` keeps its JSON list format and is limited to 1,000 collection periods per response. Pass `limit` (1–1,000) and `offset` to read subsequent pages; prefer `limit=25` when inspecting reports. Response headers `X-Total-Count`, `X-Limit`, `X-Offset` and `X-Has-More` describe pagination. Clients that previously assumed an unlimited response must follow these headers. `GET /api/collections/summary` computes full filtered counts in SQL without loading report/log bodies. Both legacy API reads retain their existing expectation-planning behavior when a date is supplied; the dashboard uses separate read-only queries. Individual report details remain available through `GET /api/collections/{id}`.
+
+### Collect a past day
+
+In **Collectors** or **Runs & history**, expand **Run a past collection**. Choose the collector, one host and a past date, then **Queue missing periods**. This also works for dates before the master or schedule was installed. The host must be active and targeted by an enabled schedule for that collector. The current script, parameters and schedule cadence apply: an hourly schedule queues up to 24 periods for the chosen day. The worker receives each historical `period_start` / `period_end`, so the external collector must support querying that range and the source must still retain the data.
+
+Each request covers one host and one day, with a maximum of 500 periods. The date selects period starts in UTC; daily schedules preserve the satellite's local clock and timezone, including DST. Only completed missing periods are queued. Existing successes, failures and active tasks remain unchanged, and repeating the same request does not duplicate tasks. Retry existing failures individually in History. Tasks wait in the normal worker queue if a satellite is busy or offline. This action is available to administrators and operators; browsing dates remains read-only.

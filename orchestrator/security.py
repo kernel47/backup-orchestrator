@@ -223,7 +223,12 @@ def admin(
     token = web_token(request)
     if token and hmac.compare_digest(x_csrf_token.encode(), token.encode()):
         user = principal(request)
-        actions = ("/api/collections/retry", "/api/collections/plan", "/api/group-runs")
+        actions = (
+            "/api/collections/retry",
+            "/api/collections/plan",
+            "/api/collections/backfill",
+            "/api/group-runs",
+        )
         if (
             user["role"] not in ("admin", "operator")
             or user["role"] == "operator"

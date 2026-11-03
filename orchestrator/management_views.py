@@ -1,7 +1,5 @@
 """Page rendering for configuration, inventory and the global overview."""
 
-from collections import Counter
-
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
@@ -10,21 +8,25 @@ from . import service as svc
 from .cadences import CADENCES, SCHEDULE_CADENCES
 from .catalog_api import catalog, collectors, host_groups, hosts, workers
 from .config import settings
-from .models import Window, Worker
+from .models import Host, HostGroup, Worker
 from .schedules_api import schedules
 from .security import web_token
-from .views import latest_collector_health, overview_activity
+from .views import latest_collector_health, overview_activity, overview_operations
 from .web import templates
 
 
 def render_overview(request):
     today = svc.now().strftime("%Y-%m-%d")
     with db.Session() as session:
-        totals = dict(
-            session.execute(
-                select(Window.status, func.count()).group_by(Window.status)
-            ).all()
-        )
+        operations = overview_operations(session)
+        inventory = {
+            "hosts": session.scalar(
+                select(func.count(Host.id)).where(Host.deleted.is_(False))
+            ),
+            "groups": session.scalar(
+                select(func.count(HostGroup.id)).where(HostGroup.deleted.is_(False))
+            ),
+        }
         heartbeats = list(session.scalars(select(Worker.heartbeat)))
         online = sum(
             1
@@ -34,6 +36,23 @@ def render_overview(request):
         )
         health = latest_collector_health(session)
         activity = overview_activity(session)
+    collector_rows = collectors()
+    attention = [
+        c
+        for c in collector_rows
+        if c["enabled"]
+        and (
+            health[c["id"]]["stale"]
+            or any(
+                health[c["id"]]["counts"][state]
+                for state in ("FAILED", "TIMEOUT", "UNKNOWN", "MISSING")
+            )
+        )
+    ]
+    attention_ids = {c["id"] for c in attention}
+    collector_rows.sort(
+        key=lambda c: (c["id"] not in attention_ids, c["scope"], c["name"])
+    )
     return templates.TemplateResponse(
         request=request,
         name="overview.html",
@@ -41,14 +60,17 @@ def render_overview(request):
             "request": request,
             "view": "overview",
             "overview": True,
-            "collectors": collectors(),
+            "collectors": collector_rows,
             "satellites": {
                 "total": len(heartbeats),
                 "online": online,
                 "offline": len(heartbeats) - online,
             },
             "today": today,
-            "counts": Counter(totals),
+            "operations": operations,
+            "inventory": inventory,
+            "scope_count": len(catalog()["scopes"]),
+            "attention": attention,
             "health": health,
             **activity,
             "csrf": web_token(request),

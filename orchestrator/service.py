@@ -114,7 +114,14 @@ def snapshot(c, h, parameters=None):
 
 
 def expected(
-    s, day, collector_id=None, host="", enqueue=False, parameters=None, zone=""
+    s,
+    day,
+    collector_id=None,
+    host="",
+    enqueue=False,
+    parameters=None,
+    zone="",
+    queue_statuses=("MISSING", "FAILED", "TIMEOUT"),
 ):
     start, end = bounds(day)
     ids = []
@@ -152,7 +159,7 @@ def expected(
                     and c.enabled
                     and h.enabled
                     and dt(existing.period_end) <= current
-                    and existing.status in ("MISSING", "FAILED", "TIMEOUT")
+                    and existing.status in queue_statuses
                 ):
                     queue(s, existing, parameters)
             if rule is False or h.deleted or h.discovered:
@@ -211,7 +218,7 @@ def expected(
                         and c.enabled
                         and h.enabled
                         and dt(w.period_end) <= current
-                        and w.status in ("MISSING", "FAILED", "TIMEOUT")
+                        and w.status in queue_statuses
                     ):
                         queue(s, w, parameters)
                     ids.append(w.id)
@@ -246,6 +253,7 @@ def queue(s, w, parameters=None, manual=True):
             "execution_timezone",
             "clock_worker_id",
             "scheduled_for",
+            "historical_backfill",
         )
         if k in w.snapshot
     }
@@ -258,7 +266,9 @@ def queue(s, w, parameters=None, manual=True):
         execution_snapshot(c, h, rule, parameters, session=s),
         interval_seconds=old_interval,
     )
-    w.snapshot = dict(w.snapshot, **original_clock, manual_trigger=manual)
+    w.snapshot = dict(
+        w.snapshot, **original_clock, manual_trigger=manual, queued_at=time.time()
+    )
     if old_group:
         w.snapshot = dict(w.snapshot, host_group_id=old_group)
     return True
@@ -346,6 +356,7 @@ def fail(s, a, status, error):
     if a.number - w.retry_base <= w.snapshot["max_retries"]:
         w.status = "PENDING"
         w.available_at = time.time() + min(60, 2 ** (a.number - w.retry_base))
+        w.snapshot = dict(w.snapshot, queued_at=time.time())
     else:
         w.status = (
             "TIMEOUT"
@@ -568,6 +579,8 @@ def tick():
                     if host_active(s, h) and c.enabled and allowed
                     else "DISABLED"
                 )
+                if w.status == "PENDING":
+                    w.snapshot = dict(w.snapshot, queued_at=time.time())
         # Only the most recent closed window is scheduled on restart. Gaps remain MISSING until requested.
         for c in s.scalars(
             select(Collector).where(

@@ -172,6 +172,7 @@ def render_history(request, selected_filters, view, period, page, page_size):
         "hosts": hosts(),
         "csrf": web_token(request),
         "today": svc.now().strftime("%Y-%m-%d"),
+        "yesterday": (svc.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
     }
     return templates.TemplateResponse(
         request=request, name="dashboard.html", context=context

@@ -58,6 +58,30 @@ async function action(button, path, method, data, success, redirect = null) {
   }
 }
 // Delegation keeps collection actions working after fragment replacement.
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("form[data-backfill]");
+  if (!form) return;
+  event.preventDefault();
+  const values = new FormData(form);
+  action(
+    form.querySelector('button[type="submit"]'),
+    "/api/collections/backfill",
+    "POST",
+    Object.fromEntries(values),
+    (out) => out.queued
+      ? `${out.queued} historical collection(s) queued for ${out.date}.`
+      : "No missing completed periods to queue. Check the schedule and satellite timezone.",
+    () => "/?" + new URLSearchParams({
+      view: "runs",
+      workspace: document.querySelector('meta[name="workspace-zone"]').content,
+      nav_reset: "1",
+      period: "day",
+      date: values.get("date"),
+      collector_id: values.get("collector_id"),
+      host: values.get("host"),
+    }),
+  );
+});
 document.addEventListener("click", (event) => {
   const b = event.target.closest(
     "[data-plan],[data-retry-one],[data-rerun-one]",

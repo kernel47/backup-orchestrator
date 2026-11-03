@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from pydantic import (
@@ -139,6 +139,13 @@ class RetryRequest(BaseModel):
 
     ids: list[str] | None = None
     filters: dict[str, str] = Field(default_factory=dict)
+
+
+class BackfillRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    collector_id: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    date: date
 
 
 class PlanRequest(BaseModel):
