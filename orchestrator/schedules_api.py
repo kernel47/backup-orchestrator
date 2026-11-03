@@ -73,7 +73,18 @@ def save_schedule(schedule_id, body):
                 rule.kind != body.kind or rule.local_time != body.local_time
             ):
                 rule.created_at = svc.now().timestamp()
-            for k, v in body.model_dump().items():
+            zone = targets[0].zone if targets else s.get(HostGroup, gids[0]).zone
+            require_zone(zone)
+            # The edit form sends the group list, not the legacy primary group.
+            # Normalize both before any query can autoflush this existing rule.
+            values = dict(
+                body.model_dump(),
+                zone=zone,
+                zones=[zone],
+                host_group_id=gids[0],
+                host_group_ids=gids,
+            )
+            for k, v in values.items():
                 setattr(rule, k, v)
             if (
                 body.enabled
@@ -83,11 +94,6 @@ def save_schedule(schedule_id, body):
                 raise ValueError(
                     "Every target needs an authorized satellite reporting its local timezone. Start the workers first."
                 )
-            rule.zone = targets[0].zone if targets else s.get(HostGroup, gids[0]).zone
-            rule.zones = [rule.zone]
-            require_zone(rule.zone)
-            rule.host_group_id = gids[0]
-            rule.host_group_ids = gids
             s.add(rule)
             s.flush()
             svc.validate_groups_and_schedules(s, require_targets=False)

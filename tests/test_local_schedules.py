@@ -233,3 +233,99 @@ def test_worker_timezone_detection_uses_explicit_iana_name(monkeypatch):
     monkeypatch.setenv("TZ", "America/New_York")
     assert worker_timezone() == "America/New_York"
     assert worker_timezone("Asia/Singapore") == "Asia/Singapore"
+
+
+def test_edit_interval_to_daily_with_group_list_preserves_schedule_identity(
+    database, monkeypatch
+):
+    if database.dialect.name == "sqlite":
+        from sqlalchemy import event
+
+        @event.listens_for(database, "checkout")
+        def enforce_foreign_keys(connection, *_):
+            connection.execute("PRAGMA foreign_keys=ON")
+
+    freeze(monkeypatch, "2026-10-22T12:00:00+00:00")
+    with TestClient(app) as client:
+        with db.transaction() as s:
+            s.get(Worker, "EMEA-SAT-1").timezone = "Europe/Paris"
+        g = group(client, ["nbu-emea-01"])
+        created = schedule(client, g, interval=3600)
+        assert created.status_code == 200, created.text
+        original = created.json()
+        from orchestrator.models import Attempt
+
+        with db.transaction() as s:
+            s.add(
+                Window(
+                    id="schedule-history",
+                    zone="EMEA",
+                    host_id="nbu-emea-01",
+                    collector_id="netbackup_jobs",
+                    period_start="2026-10-22T10:00:00Z",
+                    period_end="2026-10-22T11:00:00Z",
+                    status="SUCCESS",
+                    created_at=1,
+                    snapshot={"schedule_id": original["id"], "interval_seconds": 3600},
+                )
+            )
+            s.flush()
+            s.add(
+                Attempt(
+                    id="schedule-attempt",
+                    window_id="schedule-history",
+                    number=1,
+                    worker_id="EMEA-SAT-1",
+                    status="SUCCESS",
+                    started_at=1,
+                    finished_at=2,
+                    lease_until=3,
+                    result={"summary": "Original report"},
+                )
+            )
+        # The edit form sends host_group_ids, without the legacy host_group_id.
+        payload = {
+            "name": "Policies daily",
+            "collector_id": "netbackup_jobs",
+            "host_group_ids": [g["id"]],
+            "zones": ["EMEA"],
+            "kind": "daily_local",
+            "local_time": "07:00",
+            "interval_seconds": 3600,
+            "enabled": True,
+            "parameters": {"include_period": False},
+        }
+        headers = {**AUTH, "X-Orchestrator-Zone": "EMEA"}
+        updated = client.put(
+            f"/api/schedules/{original['id']}", headers=headers, json=payload
+        )
+        assert updated.status_code == 200, updated.text
+        result = updated.json()
+        assert result["id"] == original["id"]
+        assert result["kind"] == "daily_local" and result["interval_seconds"] == 86400
+        assert result["host_group_id"] == g["id"]
+        assert result["host_group_ids"] == [g["id"]]
+        timing = client.get("/api/schedules", headers=headers).json()[0]["timing"]
+        assert timing[0]["next_execution"] == "2026-10-23T05:00:00Z"
+        payload.update(kind="interval", interval_seconds=3600)
+        reverted = client.put(
+            f"/api/schedules/{original['id']}", headers=headers, json=payload
+        )
+        assert reverted.status_code == 200, reverted.text
+        with db.Session() as s:
+            rules = list(s.scalars(select(Schedule)))
+            assert len(rules) == 1 and rules[0].id == original["id"]
+            assert rules[0].kind == "interval"
+            assert s.get(Window, "schedule-history").status == "SUCCESS"
+            assert s.get(Attempt, "schedule-attempt").result == {
+                "summary": "Original report"
+            }
+        with db.transaction() as s:
+            s.get(Worker, "EMEA-SAT-1").timezone = ""
+        payload.update(kind="daily_local")
+        rejected = client.put(
+            f"/api/schedules/{original['id']}", headers=headers, json=payload
+        )
+        assert rejected.status_code == 422
+        with db.Session() as s:
+            assert s.get(Schedule, original["id"]).kind == "interval"
