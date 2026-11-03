@@ -259,3 +259,102 @@ def test_backup_collector_invalid_status_is_rejected():
     for payload in ({}, {"status": "partial"}, [], {"status": True}):
         with pytest.raises(ValueError):
             backup_collector_report(payload)
+
+
+@pytest.mark.parametrize("include_period", [True, False])
+def test_shared_alias_can_include_or_omit_dates_without_overriding_task_context(
+    include_period,
+):
+    from orchestrator.config import load
+
+    definition = load("worker_scripts.yaml")["backup_collector"]
+    task = {
+        "host": "host-01",
+        "period_start": "2026-10-29T06:00:00Z",
+        "period_end": "2026-10-29T07:00:00Z",
+        "parameters": {
+            "scope": "netbackup",
+            "type": "jobs" if include_period else "policies",
+            "include_period": include_period,
+            "period_start": "ignored",
+            "asset": "ignored",
+        },
+    }
+    argv = build_command(definition, task)
+    assert "--asset=host-01" in argv and "ignored" not in " ".join(argv)
+    dates = [arg for arg in argv if arg.startswith(("--start-date=", "--end-date="))]
+    assert dates == (
+        ["--start-date=2026-10-29T06:00:00Z", "--end-date=2026-10-29T07:00:00Z"]
+        if include_period
+        else []
+    )
+    assert not any("include_period" in arg for arg in argv)
+    task["parameters"].pop("include_period")
+    assert "--start-date=2026-10-29T06:00:00Z" in build_command(definition, task)
+    task.pop("period_end")
+    with pytest.raises(ValueError, match="Missing task field: period_end"):
+        build_command(definition, task)
+
+
+@pytest.mark.parametrize("condition", ["false", 0, None, [], {}])
+def test_period_condition_requires_a_json_boolean(condition):
+    from orchestrator.config import load
+
+    definition = load("worker_scripts.yaml")["backup_collector"]
+    with pytest.raises(ValueError, match="include_period must be true or false"):
+        build_command(
+            definition,
+            {
+                "host": "host-01",
+                "parameters": {
+                    "scope": "netbackup",
+                    "type": "policies",
+                    "include_period": condition,
+                },
+            },
+        )
+
+
+@pytest.mark.parametrize("kind", ["jobs", "policies"])
+def test_shared_command_executes_periodic_and_snapshot_collectors(
+    tmp_path, monkeypatch, kind
+):
+    from orchestrator.config import load
+
+    script = tmp_path / "collector.py"
+    script.write_text("""import argparse, json
+parser = argparse.ArgumentParser()
+for field in ("asset", "scope", "type", "start-date", "end-date"):
+    parser.add_argument("--" + field)
+args = parser.parse_args()
+assert args.asset == "host-01"
+if args.type == "policies":
+    assert args.start_date is None and args.end_date is None
+else:
+    assert args.start_date == "2026-10-29T06:00:00Z"
+    assert args.end_date == "2026-10-29T07:00:00Z"
+print(json.dumps({"status":"SUCCESS", "summary":args.type + " collected"}))
+""")
+    definition = load("worker_scripts.yaml")["backup_collector"]
+    definition.update(command=[sys.executable, str(script)], report_format="standard")
+    monkeypatch.setattr(
+        "worker.executor.load", lambda _: {"backup_collector": definition}
+    )
+    report, _ = asyncio.run(
+        execute(
+            {
+                "script": "backup_collector",
+                "timeout_seconds": 5,
+                "host": "host-01",
+                "period_start": "2026-10-29T06:00:00Z",
+                "period_end": "2026-10-29T07:00:00Z",
+                "parameters": {
+                    "scope": "netbackup",
+                    "type": kind,
+                    "include_period": kind == "jobs",
+                },
+            }
+        )
+    )
+    assert report["status"] == "SUCCESS" and report["summary"] == kind + " collected"
+    assert report["period_start"] == "2026-10-29T06:00:00Z"

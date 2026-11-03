@@ -34,10 +34,12 @@ Only `status` and `summary` are required by validation. The timestamp, counters,
 backup_collector:
   command: [backup-collector, collect]
   report_format: backup_collector
+  defaults:
+    include_period: true
   context_args:
     asset: host
-    start-date: period_start
-    end-date: period_end
+    start-date: {field: period_start, when: include_period}
+    end-date: {field: period_end, when: include_period}
   parameter_args:
     scope: scope
     type: type
@@ -62,7 +64,7 @@ backup_collector:
     - collect
   working_directory: /data/backup-collectors-cli
   report_format: backup_collector
-  # Keep the context_args, parameter_args and required_parameters above.
+  # Keep the defaults, context_args, parameter_args and required_parameters above.
 ```
 
 Without this setting, commands run from the worker project root. Relative working directories are resolved from that root. This setting is controlled only by the worker's local allowlist; task parameters cannot override it. The collector must still load its own `.env` (for example with `load_dotenv`); selecting a Python executable does not load it automatically. The service account needs access to the directory and its configuration. Interactive shell exports are not automatically available to a systemd service. Never print secret values when diagnosing missing configuration.
@@ -73,9 +75,9 @@ For a task on `nbu-emea-01`, the worker constructs argv equivalent to:
 backup-collector collect --asset=nbu-emea-01 --start-date=2026-10-29T06:00:00Z --end-date=2026-10-29T07:00:00Z --scope=netbackup --type=jobs
 ```
 
-The period comes from the assigned task, including historical retries. No manual date parameters are required. `scope` is explicitly configured for the external tool (for example lowercase `netbackup`), independently of the dashboard scope's display name.
+The period comes from the assigned task, including historical retries. No manual date parameters are required. The shipped alias includes period arguments by default, preserving existing Jobs behavior. For a snapshot collector such as Policies, use parameters `{"scope":"netbackup","type":"policies","include_period":false}`. The same command receives host/scope/type but no `--start-date` or `--end-date`; `include_period` itself is not sent to the CLI. It must be a JSON boolean, not the string `"false"`. The master still tracks scheduled periods and attempts. A Policies replay collects current state unless the external collector independently supports historical snapshots; selecting a past date does not reconstruct past policies. `scope` is explicitly configured for the external tool (for example lowercase `netbackup`), independently of the dashboard scope's display name.
 
-`command` is a fixed executable/argument list. `context_args` maps option names to required task fields; `parameter_args` maps option names to merged parameter keys. Only locally mapped parameters become options. Optional `defaults` supplies parameter defaults, and `required_parameters` rejects missing values before launch. True adds a boolean flag, false/null omits it; strings/numbers become `--option=value`. Nested objects/lists are rejected. Values are passed directly as argv without a shell. Dashboard parameters cannot replace the executable or the task's host/period mappings. Keep credentials in the worker environment or the collector's own configuration, not command arguments.
+`command` is a fixed executable/argument list. `context_args` maps option names to required task fields; a mapping such as `{field: period_start, when: include_period}` includes that task field only when the merged parameter `include_period` is true. The referenced condition must resolve to a boolean (through defaults or task parameters); missing or malformed conditions fail before launching. When true, the task field remains required. Dates are always taken from task context, never arbitrary parameter values; `parameter_args` maps option names to merged parameter keys. Only locally mapped parameters become options. Optional `defaults` supplies parameter defaults, and `required_parameters` rejects missing values before launch. True adds a boolean flag, false/null omits it; strings/numbers become `--option=value`. Nested objects/lists are rejected. Values are passed directly as argv without a shell. Dashboard parameters cannot replace the executable or the task's host/period mappings. Keep credentials in the worker environment or the collector's own configuration, not command arguments.
 
 Invalid YAML or command configuration produces a `FAILURE` report with `details.reason: COMMAND_CONFIG`. YAML parsing errors are summarized without echoing configuration values. The live worker metadata also marks a command unavailable when its configured working directory is missing; executable detection alone does not validate collector credentials or its `.env` loading.
 
@@ -168,3 +170,16 @@ For command collectors, use stderr for progress and reserve stdout for the JSON 
 Context includes host, zone, scope, collector, assigned attempt number, worker ID, identifiers, requested UTC period and merged parameters. Parameter precedence is host → collector → schedule → explicit launch overrides. Retries preserve the requested period and may use updated configuration. Scripts execute as trusted subprocesses under the worker's account.
 
 `collectors/fake.py` simulates reports without contacting equipment or a destination. Its `simulation` parameter supports `SUCCESS`, `FAILURE` (`FAILED` is also recognized for this simulation), `UNKNOWN`, `ERROR` and `TIMEOUT`. An uncaught exception produces `FAILURE`; malformed reports produce `UNKNOWN`.
+
+### Reuse one worker alias across collectors
+
+`backup_collector` in `config/worker_scripts.yaml` defines the allowed command and argument mapping. Keep this same alias for separate dashboard collectors:
+
+| Dashboard collector | Parameters | Example schedule |
+| --- | --- | --- |
+| NetBackup Jobs | `{"scope":"netbackup","type":"jobs"}` | Every hour |
+| NetBackup Policies | `{"scope":"netbackup","type":"policies","include_period":false}` | Every 24 hours |
+
+Use the type values accepted by your CLI. Each collector has its own history, schedule and target groups. The worker supplies the host and, when enabled, the requested period dates. The alias does not need to be renamed or duplicated. Update the worker code **and** its local YAML definition together; an older definition with unconditional date mappings will still send dates even if `include_period` is false. Register the same alias on the master for the selector. Keep your existing command and working_directory when adding conditional mappings. No database reset is needed.
+
+Referential inventory exports contain every host type in each zone; the inventory host type (for example Master server) is separate from a collector's `type=jobs` parameter.

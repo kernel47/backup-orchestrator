@@ -9,7 +9,7 @@ dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 [tool.setuptools.packages.find]
-include = ["orchestrator*", "worker*", "collectors*"]
+include = ["orchestrator*", "worker*", "collectors*", "services*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 

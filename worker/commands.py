@@ -3,6 +3,21 @@
 import re
 
 
+def context_field(reference, parameters):
+    """Conditional context mappings are controlled by the local worker allowlist."""
+    if isinstance(reference, str):
+        return reference
+    if not isinstance(reference, dict) or set(reference) != {"field", "when"}:
+        raise ValueError("Context mapping must be a field name or {field, when}")
+    field, condition = reference["field"], reference["when"]
+    if not all(isinstance(value, str) and value for value in (field, condition)):
+        raise ValueError("Context field and condition must be nonempty names")
+    enabled = parameters.get(condition)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"Context condition {condition} must be true or false")
+    return field if enabled else None
+
+
 def build_command(definition, task):
     command = definition.get("command")
     if (
@@ -38,7 +53,11 @@ def build_command(definition, task):
                 r"[A-Za-z][A-Za-z0-9-]*", flag
             ):
                 raise ValueError("Invalid command option name")
-            if not isinstance(name, str):
+            if required:
+                name = context_field(name, parameters)
+                if name is None:
+                    continue
+            elif not isinstance(name, str):
                 raise ValueError(
                     "Command option mappings must reference parameter names"
                 )

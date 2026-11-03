@@ -4,10 +4,12 @@ fake: collectors/fake.py
 backup_collector:
   command: [backup-collector, collect]
   report_format: backup_collector
+  defaults:
+    include_period: true
   context_args:
     asset: host
-    start-date: period_start
-    end-date: period_end
+    start-date: {field: period_start, when: include_period}
+    end-date: {field: period_end, when: include_period}
   parameter_args:
     scope: scope
     type: type

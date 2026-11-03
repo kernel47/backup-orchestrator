@@ -539,7 +539,7 @@ def test_export_validation_preserves_file_and_reads_yaml(tmp_path, monkeypatch):
     monkeypatch.setattr(
         export,
         "collect_hosts",
-        lambda: [{"id": "api-host", "zone": "EMEA", "scope": "NetBackup"}],
+        lambda **_: [{"id": "api-host", "zone": "EMEA", "scope": "NetBackup"}],
     )
     export.refresh(path)
     assert (
@@ -550,7 +550,7 @@ def test_export_validation_preserves_file_and_reads_yaml(tmp_path, monkeypatch):
     )
     original = path.read_bytes()
     monkeypatch.setattr(
-        export, "collect_hosts", lambda: [{"id": "bad host", "zone": "EMEA"}]
+        export, "collect_hosts", lambda **_: [{"id": "bad host", "zone": "EMEA"}]
     )
     with pytest.raises(ValueError):
         export.refresh(path)

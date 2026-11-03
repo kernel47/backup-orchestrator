@@ -1,6 +1,6 @@
 # Backup Orchestrator — managed architecture
 
-The master runs FastAPI, the Jinja dashboard, managed domain services and one embedded scheduler. Workers use outbound HTTP and execute trusted Python collectors or allowlisted commands in subprocesses. Inventory discovery reads JSON/YAML exports; scripts/sync_inventory.py optionally refreshes exports from an API.
+The master runs FastAPI, the Jinja dashboard, managed domain services and one embedded scheduler. Workers use outbound HTTP and execute trusted Python collectors or allowlisted commands in subprocesses. Inventory discovery reads JSON/YAML exports; scripts/sync_inventory.py optionally refreshes exports through the adaptable per-zone integration in services/referential.py.
 
 Configuration has two layers:
 
@@ -31,7 +31,7 @@ Normal startup migrates storage and preserves managed state. It does not load ob
 - `worker/launch.py`: validate a local script definition and prepare its command, working directory and report format.
 - `worker/commands.py`: map authorized task parameters into command arguments, without a shell.
 - `worker/executor.py`: subprocess lifecycle, timeout, logs and execution metadata; `worker/reports.py` translates native collector reports.
-- `inventory/hosts.json`: static or API-generated hosts; `scripts/sync_inventory.py` refreshes, previews and optionally applies them.
+- `inventory/hosts.json`: optional static inventory. Referential refresh generates `inventory/hosts-<zone>.json`, one complete file per enabled zone, then discovers and optionally applies each source using `scripts/sync_inventory.py`.
 
 ## Inventory lifecycle
 
