@@ -64,7 +64,8 @@
 <div class="settings-fields">
 <label>ID<input name="id" placeholder="EMEA-SAT-3" required>
 </label>
-<input type="hidden" name="zone" value="{{active_zone}}"><p>Zone: <strong>{{active_zone}}</strong></p>
+<label>Zone<input name="zone" value="{{active_zone}}" readonly>
+</label>
 <label>Scopes (comma separated)<input name="scopes" placeholder="NetBackup, DataDomain" required>
 </label>
 <label>Concurrency<input name="concurrency" type="number" value="2" min="1" max="32">
